@@ -289,4 +289,9 @@ export const bridge = {
   onOpenProject(handler: (path: string) => void): Promise<UnlistenFn> {
     return listen<string>('open-project', e => handler(e.payload));
   },
+
+  /** macOS menu bar actions (item ids from `src-tauri/src/menu.rs`). */
+  onMenu(handler: (id: string) => void): Promise<UnlistenFn> {
+    return listen<string>('menu', e => handler(e.payload));
+  },
 };

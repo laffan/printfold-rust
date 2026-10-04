@@ -5,6 +5,8 @@
 //! `.printfold` file associations).
 
 mod commands;
+#[cfg(desktop)]
+mod menu;
 mod platform;
 mod state;
 
@@ -48,6 +50,14 @@ pub fn run() {
                 if p.extension().map(|e| e.eq_ignore_ascii_case(platform::PROJECT_EXT)).unwrap_or(false) && p.exists() {
                     app.state::<AppState>().pending_opens.lock().unwrap().push(p);
                 }
+            }
+            // Native menu bar on macOS (compiled on all desktops so it is
+            // checked everywhere; Windows/Linux keep the in-window header).
+            #[cfg(desktop)]
+            if cfg!(target_os = "macos") {
+                let menu = menu::build(app.handle())?;
+                app.set_menu(menu)?;
+                app.on_menu_event(|app, event| menu::forward(app, event.id().as_ref()));
             }
             // Scan system fonts off the main thread; engine calls wait for it.
             let handle = app.handle().clone();

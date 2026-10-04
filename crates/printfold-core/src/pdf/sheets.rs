@@ -49,9 +49,19 @@ impl<'a> Layout<'a> {
     }
 
     fn draw(&self, p: &mut Painter, s: &mut Surface, ctx: &PdfContext, number: u32, x: f64, top: f64) {
-        if let Some(page) = self.pages.get(&number) {
-            let bx = PageBox { x, top, width: self.page.width, height: self.page.height };
-            draw_page(p, s, ctx, page, bx, self.adjacent(page), self.spanning.get(&number).copied());
+        self.draw_shifted(p, s, ctx, number, x, top, 0.0);
+    }
+
+    /// Draw a page shifted horizontally by `shift` inside its own page box
+    /// (creep compensation); content pushed past the box edge is clipped.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_shifted(&self, p: &mut Painter, s: &mut Surface, ctx: &PdfContext, number: u32, x: f64, top: f64, shift: f64) {
+        let Some(page) = self.pages.get(&number) else { return };
+        let clipped = shift != 0.0 && p.push_clip_rect(s, x, top, self.page.width, self.page.height);
+        let bx = PageBox { x: x + shift, top, width: self.page.width, height: self.page.height };
+        draw_page(p, s, ctx, page, bx, self.adjacent(page), self.spanning.get(&number).copied());
+        if clipped {
+            s.pop();
         }
     }
 
@@ -68,6 +78,10 @@ pub(crate) fn booklet(doc: &mut Document, p: &mut Painter, ctx: &PdfContext, lay
     let sheets: Vec<ImpositionSheet> = ctx.project.signatures.iter().flat_map(calculate_imposition).collect();
     let dx = output.duplex_offset_x.unwrap_or(0.0);
     let dy = output.duplex_offset_y.unwrap_or(0.0);
+    // Creep compensation (shingling): nested sheets push their fore-edges
+    // outward when folded, so each sheet inward from the outermost moves
+    // its content toward the fold by one more `creepPerSheet`.
+    let creep = if output.creep_enabled == Some(true) { output.creep_per_sheet.unwrap_or(0.0).max(0.0) } else { 0.0 };
 
     for group in sheets.chunks(rows) {
         for front in [true, false] {
@@ -78,8 +92,9 @@ pub(crate) fn booklet(doc: &mut Document, p: &mut Painter, ctx: &PdfContext, lay
                 let side = if front { sheet.front } else { sheet.back };
                 // PDF y-up offset → move up = smaller top.
                 let (ox, oy) = if front { (dx, -dy) } else { (0.0, 0.0) };
-                layout.draw(p, &mut s, ctx, side.left, ox, top + oy);
-                layout.draw(p, &mut s, ctx, side.right, layout.page.width + ox, top + oy);
+                let shift = creep * sheet.sheet_number.saturating_sub(1) as f64;
+                layout.draw_shifted(p, &mut s, ctx, side.left, ox, top + oy, shift);
+                layout.draw_shifted(p, &mut s, ctx, side.right, layout.page.width + ox, top + oy, -shift);
             }
             if !ctx.project.signatures.is_empty() {
                 print_marks(p, &mut s, ctx, layout, rows);

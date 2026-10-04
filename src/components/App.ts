@@ -75,6 +75,7 @@ export class App {
     this.setupResizers();
     this.setupAutoSave();
     void this.setupFileAssociations();
+    void this.setupNativeMenu();
 
     // Show the welcome screen — the user must create or open a project
     // before the editor becomes interactive.
@@ -190,6 +191,28 @@ export class App {
     } catch (e) {
       console.error('Open from path failed:', e);
       await showAlert(`Could not open project: ${errorMessage(e)}`);
+    }
+  }
+
+  /** Route macOS menu bar items to the same actions as the UI buttons. */
+  private async setupNativeMenu(): Promise<void> {
+    const click = (selector: string) => (document.querySelector(selector) as HTMLElement | null)?.click();
+    try {
+      await bridge.onMenu((id) => {
+        const inEditor = document.body.classList.contains('welcome-active') === false;
+        switch (id) {
+          case 'new-project': void this.handleWelcomeAction({ kind: 'new' }); break;
+          case 'open-project': void this.handleWelcomeAction({ kind: 'open' }); break;
+          case 'projects': void this.welcomeScreen.show(); break;
+          case 'add-files': if (inEditor) click('#btn-add-files'); break;
+          case 'export-pdf': if (inEditor) click('#btn-export'); break;
+          case 'toggle-sidebar': click('#btn-toggle-sidebar'); break;
+          case 'show-editor': click('.column-header .tab[data-tab="editor"]'); break;
+          case 'show-preview': click('.column-header .tab[data-tab="preview"]'); break;
+        }
+      });
+    } catch (e) {
+      console.warn('Native menu unavailable:', e);
     }
   }
 
@@ -323,8 +346,13 @@ export class App {
 
     if (!toggleBtn || !sidebar) return;
 
-    // Start with sidebar visible, button active
+    // Start with sidebar visible, button active — except in narrow windows
+    // (iPad portrait / Split View), where the canvas needs the room.
     toggleBtn.classList.add('active');
+    if (window.innerWidth < 1000) {
+      sidebar.classList.add('sidebar-hidden');
+      toggleBtn.classList.remove('active');
+    }
 
     const toggleSidebar = () => {
       const isHidden = sidebar.classList.toggle('sidebar-hidden');

@@ -28,9 +28,15 @@ export class PDFPreview {
   mount(): void {
     this.container = document.getElementById('pdf-preview-container')!;
 
-    // Listen for reflow events to regenerate preview
+    // Regenerate when the layout changes. Reflow runs asynchronously in
+    // Rust, so watch for its result (new signatures) as well as requests.
     appState.onReflowRequest(() => {
       this.scheduleRefresh();
+    });
+    appState.onProjectChange((project, prev) => {
+      if (project.signatures !== prev.signatures || project.outputOptions !== prev.outputOptions) {
+        this.scheduleRefresh();
+      }
     });
 
     // Re-render at the new width when the pane is resized.

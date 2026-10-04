@@ -126,9 +126,17 @@ fn list_text(start: Option<u64>, events: &[Event]) -> String {
             }
             Event::Start(Tag::Item) => {
                 flush(&mut current, &mut lines);
+                // Nesting is shown by the bullet glyph (• ◦ ▪) plus a
+                // two-space indent; wrapping collapses leading spaces, so
+                // the glyph is what keeps levels distinguishable.
                 let depth = stack.len().saturating_sub(1);
                 let (ordered, n) = stack.last_mut().map(|t| (t.0, &mut t.1)).unwrap();
-                let marker = if ordered { format!("{n}. ") } else { "\u{2022} ".to_string() };
+                let bullet = match depth {
+                    0 => "\u{2022}",
+                    1 => "\u{25E6}",
+                    _ => "\u{25AA}",
+                };
+                let marker = if ordered { format!("{n}. ") } else { format!("{bullet} ") };
                 *n += 1;
                 current = Some(format!("{}{}", "  ".repeat(depth), marker));
             }
@@ -189,7 +197,14 @@ pub fn strip_blockquote_markers(raw: &str) -> String {
 }
 
 fn block_to_section(block: &Block, source: &str) -> Option<Section> {
-    let raw = source[block.range.clone()].trim_end_matches(['\n', '\r']).to_string();
+    // Include leading indentation on the block's first line (pulldown's
+    // range for indented code starts after it), so `rawMarkdown` is the
+    // literal source like the original parser's.
+    let mut start = block.range.start;
+    while start > 0 && matches!(source.as_bytes()[start - 1], b' ' | b'\t') {
+        start -= 1;
+    }
+    let raw = source[start..block.range.end].trim_end_matches(['\n', '\r']).to_string();
     let base = |section_type: SectionType, content: String| Section {
         id: new_id(),
         section_type,
@@ -279,7 +294,7 @@ mod tests {
         assert_eq!(s[1].content, "Para one\nline two.");
         assert_eq!(s[1].raw_markdown, "Para one\nline two.");
         assert_eq!(s[2].content, "quote b\nmore");
-        assert_eq!(s[3].content, "\u{2022} a x\n\u{2022} b\n  \u{2022} nested");
+        assert_eq!(s[3].content, "\u{2022} a x\n\u{2022} b\n  \u{25E6} nested");
         assert_eq!(s[4].content, "1. one\n2. two");
         assert_eq!(s[5].content, "code");
         assert_eq!(s[7].content, "cap");

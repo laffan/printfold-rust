@@ -23,6 +23,7 @@ import zipfile
 from pathlib import Path
 
 from selenium import webdriver
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -151,6 +152,55 @@ def main():
         log("exported PDF: " + " | ".join(l for l in info.splitlines() if l.startswith(("Pages", "Page size"))))
         subprocess.run(["pdftoppm", "-r", "50", "-png", "-f", "1", "-l", "2", str(pdf_path), str(SHOTS / "04-export")])
 
+        # Static page + item: tap the recto of spread 1 (page 1), insert a
+        # static page there, add a rectangle and a text item.
+        run.click("#btn-prev-spread")
+        container = run.driver.find_element(By.CSS_SELECTOR, "#konva-container")
+        ActionChains(run.driver).move_to_element_with_offset(container, 150, 0).click().perform()
+        run.wait(lambda: run.js("return getComputedStyle(document.getElementById('toolbar-add-items')).display") != "none",
+                 what="page selection")
+        run.click("#btn-add-single-page")
+        time.sleep(1.5)
+        ActionChains(run.driver).move_to_element_with_offset(container, 150, 0).click().perform()
+        time.sleep(0.5)
+        run.click("#btn-add-rect")
+        time.sleep(0.5)
+        run.click("#btn-add-text")
+        time.sleep(0.5)
+        # Text-flow region: the markdown flow continues inside it
+        run.click("#btn-add-text-flow")
+        time.sleep(2.5)
+        run.shot("04b-static-page")
+
+        # PNG export of the static page from the Selected tab
+        run.js("document.querySelector('.options-tabs .tab-btn[data-tab=\"selected\"]').click()")
+        time.sleep(0.5)
+        has_download = run.js("const b=document.getElementById('btn-download-current'); return !!b && b.offsetParent!==null")
+        if has_download:
+            run.click("#btn-download-current")
+            run.wait(lambda: any(workdir.glob("page-*.png")), timeout=60, what="page png export")
+            log(f"page export: {[p.name for p in workdir.glob('page-*.png')]}")
+        else:
+            log("download-current button not visible (page not static?)")
+
+        # Re-export: the static page's items arrive as a pre-rendered image
+        pdf_path.unlink()
+        run.click("#btn-export")
+        run.wait(lambda: pdf_path.exists() and pdf_path.stat().st_size > 1000, timeout=90, what="pdf re-export")
+        images = subprocess.run(["pdfimages", "-list", str(pdf_path)], capture_output=True, text=True).stdout
+        image_rows = [l for l in images.splitlines()[2:] if l.strip()]
+        log(f"images in PDF after adding items: {len(image_rows)}")
+        assert len(image_rows) >= 2, "expected the picture plus a pre-rendered static page"
+        subprocess.run(["pdftoppm", "-r", "50", "-png", "-f", "1", "-l", "2", str(pdf_path), str(SHOTS / "04c-export-items")])
+
+        # Duplex test page from the Output tab
+        run.js("document.querySelector('.options-tabs .tab-btn[data-tab=\"output\"]').click()")
+        time.sleep(0.3)
+        run.click("#btn-print-test-page")
+        test_pdf = workdir / "duplex-test-page.pdf"
+        run.wait(lambda: test_pdf.exists() and test_pdf.stat().st_size > 500, timeout=60, what="test page")
+        log("duplex test page exported")
+
         # Auto-save wrote a real project archive
         time.sleep(2)
         project = project_files[0]
@@ -170,6 +220,11 @@ def main():
         run.wait(lambda: int(run.text("#info-pages") or 0) >= 8, timeout=60, what="reflow after reopen")
         log(f"pages after reopen: {run.text('#info-pages')}")
         run.shot("06-reopened")
+
+        # Narrow window (iPad portrait-like) layout
+        run.driver.set_window_size(900, 1150)
+        time.sleep(1.5)
+        run.shot("07-narrow")
     except AssertionError as e:
         failures.append(str(e))
         log(f"FAIL: {e}")

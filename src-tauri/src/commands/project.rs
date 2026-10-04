@@ -94,7 +94,12 @@ fn localize(app: &AppHandle, path: PathBuf) -> CmdResult<PathBuf> {
     }
     let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Untitled".into());
     let target = platform::unique_path(&dir, &stem, PROJECT_EXT);
-    std::fs::copy(&path, &target).map_err(|e| format!("Could not import {}: {e}", path.display()))?;
+    std::fs::copy(&path, &target).map_err(|e| {
+        format!(
+            "PrintFold can't read \"{}\" where it is ({e}). Use Open Project to import a copy.",
+            platform::file_name(&path)
+        )
+    })?;
     Ok(target)
 }
 
