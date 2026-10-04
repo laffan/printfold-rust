@@ -5,7 +5,7 @@
 
 import Konva from 'konva';
 import { appState } from './state';
-import { calculatePageDimensions } from './textFlow/dimensions';
+import { calculatePageDimensions } from './pageGeometry';
 import { env } from './environment';
 import type { PageContent, PageItem, TextPageItem, ShapePageItem, ImagePageItem, FillConfig } from '../types';
 import { calculateArrayPositions, getTotalArrayInstances } from '../components/SpreadEditor/items/arrayItems';

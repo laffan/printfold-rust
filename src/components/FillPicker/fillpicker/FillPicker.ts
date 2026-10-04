@@ -120,7 +120,7 @@ export class FillPicker {
       this.panelElement = panel;
 
       // Stop clicks inside panel from closing it
-      panel.addEventListener('mousedown', (e) => {
+      panel.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
       });
 
@@ -361,7 +361,7 @@ export class FillPicker {
 
   private setupCloseHandler(): void {
     if (this.closeHandler) {
-      document.removeEventListener('mousedown', this.closeHandler);
+      document.removeEventListener('pointerdown', this.closeHandler);
     }
 
     this.closeHandler = (e: MouseEvent) => {
@@ -376,14 +376,14 @@ export class FillPicker {
 
     setTimeout(() => {
       if (this.closeHandler) {
-        document.addEventListener('mousedown', this.closeHandler);
+        document.addEventListener('pointerdown', this.closeHandler);
       }
     }, 10);
   }
 
   private removePanel(): void {
     if (this.closeHandler) {
-      document.removeEventListener('mousedown', this.closeHandler);
+      document.removeEventListener('pointerdown', this.closeHandler);
       this.closeHandler = null;
     }
 

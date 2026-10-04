@@ -27,9 +27,15 @@
   letter-spacing: -0.02em;
 }
 
-/* Hide app title in Electron (window title bar shows app name) */
-.is-electron .app-title .logo,
-.is-electron .app-title h1 {
+/* macOS: the window uses an overlay title bar, so the traffic-light
+   buttons sit inside the header; leave room for them and hide the app
+   title (the window shows the project name). */
+[data-platform="macos"] .app-header {
+  padding-left: 80px;
+}
+
+[data-platform="macos"] .app-title .logo,
+[data-platform="macos"] .app-title h1 {
   display: none;
 }
 

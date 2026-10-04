@@ -4,9 +4,8 @@
  */
 
 import { appState } from '../services/state';
+import { bridge, snapshot } from '../services/bridge';
 import { env } from '../services/environment';
-import { textFlowEngine, clearMeasurementCache } from '../services/textFlow';
-import { googleFonts } from '../services/googleFonts';
 import { fontService } from '../services/fontService';
 import { FileList } from './FileList';
 import { FilePreview } from './FilePreview';
@@ -14,12 +13,13 @@ import { SpreadEditor } from './SpreadEditor';
 import { PDFPreview } from './PDFPreview';
 import { OptionsPanel } from './OptionsPanel';
 import { updateStylesTab } from './OptionsPanel/stylesTab';
-import { ZipHandler } from '../services/zipHandler';
-import { PDFGenerator } from '../services/pdfGenerator';
+import { importProject, saveProject } from '../services/projectIO';
+import { generatePdf } from '../services/pdfExport';
 import { projectFile } from '../services/projectFile';
 import { recentProjects, type RecentEntry } from '../services/recentProjects';
+import { showAlert, showPrompt } from '../services/dialogs';
 import { WelcomeScreen, type WelcomeAction } from './WelcomeScreen';
-import type { BookletProject } from '../types';
+import type { BookletProject, ProjectFile } from '../types';
 
 const AUTOSAVE_DEBOUNCE_MS = 600;
 
@@ -29,8 +29,6 @@ export class App {
   private spreadEditor!: SpreadEditor;
   private pdfPreview!: PDFPreview;
   private optionsPanel!: OptionsPanel;
-  private zipHandler!: ZipHandler;
-  private pdfGenerator!: PDFGenerator;
   private welcomeScreen!: WelcomeScreen;
 
   /** Debounced auto-save handle. */
@@ -39,6 +37,10 @@ export class App {
    *  re-writing the file we just read). */
   private suppressAutoSave = false;
 
+  /** Reflow bookkeeping: one request in flight, re-run if inputs changed. */
+  private reflowInFlight: Promise<void> | null = null;
+  private reflowAgain = false;
+
   init(): void {
     // Initialize components
     this.fileList = new FileList();
@@ -46,8 +48,6 @@ export class App {
     this.spreadEditor = new SpreadEditor();
     this.pdfPreview = new PDFPreview();
     this.optionsPanel = new OptionsPanel();
-    this.zipHandler = new ZipHandler();
-    this.pdfGenerator = new PDFGenerator();
     this.welcomeScreen = new WelcomeScreen();
 
     // Mount components
@@ -71,24 +71,16 @@ export class App {
     this.setupOptionsTabs();
     this.setupCollapsiblePanels();
     this.setupStateListeners();
+    this.setupNativeFileStore();
     this.setupResizers();
     this.setupAutoSave();
-    this.setupFileAssociations();
+    void this.setupFileAssociations();
 
     // Show the welcome screen — the user must create or open a project
     // before the editor becomes interactive.
     void this.welcomeScreen.show();
 
-    // Warn the user up-front on browsers without the File System Access
-    // API: auto-save can't write to disk, so the manual Save button
-    // (re-download flow) is shown instead.
-    if (!env.isElectron && !env.supportsSilentWrites) {
-      document.getElementById('no-fsa-banner')?.classList.remove('hidden');
-      const saveBtn = document.getElementById('btn-save');
-      if (saveBtn) saveBtn.style.display = '';
-    }
-
-    console.log('PrintFold initialized', env.isElectron ? '(Electron)' : '(Web)');
+    console.log('PrintFold initialized', bridge.platform);
   }
 
   // -------------------------------------------------------------------
@@ -106,163 +98,98 @@ export class App {
       }
     } catch (e) {
       console.error('Welcome action failed:', e);
-      alert(`Could not open project: ${(e as Error).message}`);
+      await showAlert(`Could not open project: ${errorMessage(e)}`);
     }
   }
 
   private async createNewProject(): Promise<void> {
-    const dest = await env.pickProjectDestination('Untitled.printfold');
+    // iPadOS has no save panel: projects live in PrintFold's Documents
+    // folder, so ask for a name instead.
+    let name = 'Untitled';
+    if (env.isMobile) {
+      const entered = await showPrompt('New Project', 'Project name', 'Untitled', 'Create');
+      if (entered === null) return;
+      name = entered;
+    }
+    const dest = await bridge.projectNew(name);
     if (!dest) return;
 
     // Reset to a fresh project, then bind the file destination and
     // perform the initial write so the .printfold file on disk reflects
     // the empty starting state.
     this.suppressAutoSave = true;
+    this.markFilesSynced([]);
     appState.reset();
-    const displayName = stripExtension(dest.name);
-    appState.updateProject({ name: displayName });
-
-    if (dest.path) {
-      projectFile.setElectronPath(dest.path, dest.name);
-      await recentProjects.addElectronPath(dest.path, dest.name);
-    } else if (dest.handle) {
-      projectFile.setWebHandle(dest.handle, dest.name);
-      await recentProjects.addWebHandle(dest.handle, dest.name);
-    }
+    appState.updateProject({ name: stripExtension(dest.name) });
+    projectFile.bind(dest.path, dest.name);
     this.suppressAutoSave = false;
 
     this.welcomeScreen.hide();
     this.updateHeaderForProject();
-    this.performReflow();
+    await this.performReflow();
     await this.saveNow();
   }
 
   private async openExistingProject(): Promise<void> {
-    const source = await env.openProjectFile();
-    if (!source) return;
-    await this.loadProjectFromSource(source.content, source.name, {
-      path: source.path,
-      handle: source.handle,
-    });
+    const opened = await bridge.projectOpenDialog();
+    if (!opened) return;
+    await this.loadOpenedProject(opened);
   }
 
   private async openRecentProject(entry: RecentEntry): Promise<void> {
-    if (env.isElectron && entry.path) {
-      const api = window.electronAPI;
-      if (!api) throw new Error('Electron bridge unavailable');
-      const direct = await api.readFile(entry.path);
-      if (!direct.success || !direct.content) {
-        throw new Error(`Could not read ${entry.path}`);
-      }
-      const binary = atob(direct.content);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      await this.loadProjectFromSource(bytes, entry.name, { path: entry.path });
-      await recentProjects.addElectronPath(entry.path, entry.name);
-      return;
-    }
-
-    // Web: try to re-use the persisted FileSystemFileHandle.
-    const handle = await recentProjects.getWebHandle(entry.id);
-    if (!handle) {
+    try {
+      const opened = await bridge.projectOpenPath(entry.path);
+      await this.loadOpenedProject(opened);
+    } catch (e) {
       await recentProjects.remove(entry);
-      throw new Error('This recent project is no longer available. Try Open Project instead.');
+      throw e;
     }
-    // Re-validate permissions — browsers drop them after a session.
-    const permState = await (handle as unknown as {
-      queryPermission: (opts: { mode: string }) => Promise<PermissionState>
-    }).queryPermission({ mode: 'readwrite' });
-    if (permState !== 'granted') {
-      const requested = await (handle as unknown as {
-        requestPermission: (opts: { mode: string }) => Promise<PermissionState>
-      }).requestPermission({ mode: 'readwrite' });
-      if (requested !== 'granted') {
-        throw new Error('Permission to access this file was denied.');
-      }
-    }
-    const file = await handle.getFile();
-    const buffer = await file.arrayBuffer();
-    await this.loadProjectFromSource(new Uint8Array(buffer), entry.name, { handle });
-    await recentProjects.touchWeb(entry.id);
   }
 
-  private async loadProjectFromSource(
-    bytes: Uint8Array,
-    name: string,
-    binding: { path?: string; handle?: FileSystemFileHandle },
-  ): Promise<void> {
+  private async loadOpenedProject(opened: Awaited<ReturnType<typeof bridge.projectOpenPath>>): Promise<void> {
     this.suppressAutoSave = true;
     try {
-      // Empty file (e.g. a fresh .printfold from a brand-new project on
-      // another machine, or a file the OS created but never populated).
-      // Treat as a blank project rather than a load error.
-      if (bytes.length === 0) {
+      // Empty file (e.g. a project created but never edited): blank project.
+      if (!opened.data) {
+        this.markFilesSynced([]);
         appState.reset();
-        appState.updateProject({ name: stripExtension(name) });
       } else {
-        const base64 = uint8ArrayToBase64(bytes);
-        await this.zipHandler.import(base64);
-        appState.updateProject({ name: stripExtension(name) });
+        // Binary files were loaded into the native store while decoding.
+        this.markFilesSynced(opened.data.files);
+        await importProject(opened.data);
       }
-
-      if (binding.path) {
-        projectFile.setElectronPath(binding.path, name);
-      } else if (binding.handle) {
-        projectFile.setWebHandle(binding.handle, name);
-      }
+      appState.updateProject({ name: stripExtension(opened.name) });
+      projectFile.bind(opened.path, opened.name);
     } finally {
       this.suppressAutoSave = false;
     }
 
     this.welcomeScreen.hide();
     this.updateHeaderForProject();
-    this.performReflow();
+    await this.performReflow();
   }
 
   // -------------------------------------------------------------------
-  // File associations (.printfold opened from the OS)
+  // File associations (.printfold opened from Finder / Files)
   // -------------------------------------------------------------------
 
-  /**
-   * Wire up opening a .printfold that the OS handed to us via the file
-   * association (double-click, "Open With"). Electron only — the web
-   * build has no equivalent.
-   */
-  private setupFileAssociations(): void {
-    const api = window.electronAPI;
-    if (!api?.getPendingOpenFile) return;
-
-    // Opens that arrive while the app is already running.
-    api.onOpenProjectFile?.((filePath) => {
-      void this.openProjectFromPath(filePath);
-    });
-
-    // A file the OS asked us to open during cold start, stashed by the
-    // main process until the renderer was ready.
-    void api.getPendingOpenFile().then((filePath) => {
-      if (filePath) void this.openProjectFromPath(filePath);
-    });
-  }
-
-  /** Read a .printfold from an absolute path and open it as the project. */
-  private async openProjectFromPath(filePath: string): Promise<void> {
+  private async setupFileAssociations(): Promise<void> {
     try {
-      const api = window.electronAPI;
-      if (!api) return;
-      const result = await api.readFile(filePath);
-      if (!result.success || !result.content) {
-        throw new Error(result.error || `Could not read ${filePath}`);
-      }
-      const binary = atob(result.content);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      await bridge.onOpenProject((path) => void this.openProjectFromPath(path));
+      const pending = await bridge.takePendingOpens();
+      for (const path of pending) await this.openProjectFromPath(path);
+    } catch (e) {
+      console.warn('File association hand-off unavailable:', e);
+    }
+  }
 
-      const name = filePath.split(/[\\/]/).pop() || 'Untitled.printfold';
-      await this.loadProjectFromSource(bytes, name, { path: filePath });
-      await recentProjects.addElectronPath(filePath, name);
+  private async openProjectFromPath(path: string): Promise<void> {
+    try {
+      const opened = await bridge.projectOpenPath(path);
+      await this.loadOpenedProject(opened);
     } catch (e) {
       console.error('Open from path failed:', e);
-      alert(`Could not open project: ${(e as Error).message}`);
+      await showAlert(`Could not open project: ${errorMessage(e)}`);
     }
   }
 
@@ -297,8 +224,8 @@ export class App {
   private async saveNow(): Promise<void> {
     if (!projectFile.hasFile()) return;
     try {
-      const bytes = await this.zipHandler.export();
-      await projectFile.write(bytes);
+      await this.syncFilesNow();
+      await saveProject();
       this.setSaveStatus('Saved', '');
     } catch (e) {
       console.error('Auto-save failed:', e);
@@ -314,28 +241,68 @@ export class App {
     if (cls) el.classList.add(cls);
   }
 
+  // -------------------------------------------------------------------
+  // Native file store: binary files (images, fonts) are mirrored to Rust
+  // once, so saves, reflows and exports don't resend them.
+  // -------------------------------------------------------------------
+
+  private syncedFiles = new Map<string, ProjectFile>();
+  private fileSync: Promise<void> = Promise.resolve();
+
+  private markFilesSynced(files: ProjectFile[]): void {
+    this.syncedFiles.clear();
+    for (const f of files) if (f.isBase64) this.syncedFiles.set(f.id, f);
+  }
+
+  private setupNativeFileStore(): void {
+    appState.onProjectChange((project, prev) => {
+      if (project.files !== prev.files) this.fileSync = this.fileSync.then(() => this.syncFiles(project.files));
+    });
+  }
+
+  private syncFilesNow(): Promise<void> {
+    this.fileSync = this.fileSync.then(() => this.syncFiles(appState.getProject().files));
+    return this.fileSync;
+  }
+
+  private async syncFiles(files: ProjectFile[]): Promise<void> {
+    try {
+      const binary = files.filter(f => f.isBase64);
+      for (const file of binary) {
+        const known = this.syncedFiles.get(file.id);
+        if (known === file) continue;
+        if (known && known.content === file.content) {
+          if (known.name !== file.name) await bridge.fileRename(file.id, file.name);
+        } else {
+          await bridge.filePut(file);
+        }
+        this.syncedFiles.set(file.id, file);
+      }
+      const ids = binary.map(f => f.id);
+      if (this.syncedFiles.size !== ids.length) {
+        for (const id of Array.from(this.syncedFiles.keys())) {
+          if (!ids.includes(id)) this.syncedFiles.delete(id);
+        }
+        await bridge.filesRetain(ids);
+      }
+    } catch (e) {
+      console.error('File store sync failed:', e);
+    }
+  }
+
   private setupHeaderButtons(): void {
     // Re-open the welcome screen (for switching projects)
     document.getElementById('btn-welcome')?.addEventListener('click', () => {
       void this.welcomeScreen.show();
     });
 
-    // Manual save button — shown only when auto-save isn't available
-    // (browsers without the File System Access API). Performs a fresh
-    // download of the .printfold file.
-    document.getElementById('btn-save')?.addEventListener('click', async () => {
-      const zipContent = await this.zipHandler.export();
-      await env.saveFile({
-        defaultName: `${appState.getProject().name}.printfold`,
-        filters: [{ name: 'PrintFold Project', extensions: ['printfold'] }],
-        content: zipContent,
-      });
-    });
-
     // Export PDF button
     document.getElementById('btn-export')?.addEventListener('click', async () => {
+      const button = document.getElementById('btn-export') as HTMLButtonElement | null;
+      if (button) button.disabled = true;
       try {
-        const pdfBytes = await this.pdfGenerator.generate();
+        await this.syncFilesNow();
+        const pdfBytes = await generatePdf();
         await env.saveFile({
           defaultName: `${appState.getProject().name}.pdf`,
           filters: [{ name: 'PDF', extensions: ['pdf'] }],
@@ -343,7 +310,9 @@ export class App {
         });
       } catch (error) {
         console.error('PDF generation failed:', error);
-        alert('Failed to generate PDF. See console for details.');
+        await showAlert(`Failed to generate PDF: ${errorMessage(error)}`);
+      } finally {
+        if (button) button.disabled = false;
       }
     });
   }
@@ -374,8 +343,11 @@ export class App {
   }
 
   private setupTabs(): void {
-    const tabs = document.querySelectorAll('.tab');
-    const panels = document.querySelectorAll('.tab-panel');
+    const tabs = document.querySelectorAll('.column-header .tab');
+    // Only the Editor/Preview panels — the options column reuses the
+    // `.tab-panel` class, and toggling those here blanked the options panel
+    // whenever the user switched between Editor and Preview.
+    const panels = document.querySelectorAll('.tab-panels > .tab-panel');
 
     tabs.forEach(tab => {
       tab.addEventListener('click', () => {
@@ -405,7 +377,7 @@ export class App {
         if (tabName === 'editor') {
           this.spreadEditor.resize();
         } else if (tabName === 'preview') {
-          this.pdfPreview.refresh();
+          void this.syncFilesNow().then(() => this.pdfPreview.refresh());
         }
       });
     });
@@ -513,16 +485,49 @@ export class App {
   }
 
   private setupResizers(): void {
-    // Column resizers (horizontal dragging)
-    const columnResizers = document.querySelectorAll('.column-resizer');
-    columnResizers.forEach(resizer => {
+    document.querySelectorAll('.column-resizer').forEach(resizer => {
       this.setupColumnResizer(resizer as HTMLElement);
     });
-
-    // Panel resizers (vertical dragging)
-    const panelResizers = document.querySelectorAll('.panel-resizer');
-    panelResizers.forEach(resizer => {
+    document.querySelectorAll('.panel-resizer').forEach(resizer => {
       this.setupPanelResizer(resizer as HTMLElement);
+    });
+  }
+
+  /**
+   * Drag a resizer with pointer events (mouse, trackpad, touch, Pencil).
+   * `onMove` receives the pointer delta since the drag started.
+   */
+  private bindResizerDrag(
+    resizer: HTMLElement,
+    cursor: string,
+    onStart: () => void,
+    onMove: (dx: number, dy: number) => void,
+    onEnd?: () => void,
+  ): void {
+    resizer.style.touchAction = 'none';
+    resizer.addEventListener('pointerdown', (e: PointerEvent) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      resizer.setPointerCapture(e.pointerId);
+      resizer.classList.add('dragging');
+      document.body.style.cursor = cursor;
+      document.body.style.userSelect = 'none';
+      onStart();
+
+      const move = (ev: PointerEvent) => onMove(ev.clientX - startX, ev.clientY - startY);
+      const up = () => {
+        resizer.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        resizer.removeEventListener('pointermove', move);
+        resizer.removeEventListener('pointerup', up);
+        resizer.removeEventListener('pointercancel', up);
+        onEnd?.();
+      };
+      resizer.addEventListener('pointermove', move);
+      resizer.addEventListener('pointerup', up);
+      resizer.addEventListener('pointercancel', up);
     });
   }
 
@@ -541,45 +546,31 @@ export class App {
     }
 
     if (!prevSibling || !nextSibling) return;
+    const prev = prevSibling;
+    const next = nextSibling;
 
-    let startX = 0;
     let startPrevWidth = 0;
     let startNextWidth = 0;
 
-    const onMouseMove = (e: MouseEvent) => {
-      const dx = e.clientX - startX;
-
-      // Calculate new widths
-      const newPrevWidth = Math.max(200, startPrevWidth + dx);
-      const newNextWidth = Math.max(200, startNextWidth - dx);
-
-      prevSibling!.style.flex = `0 0 ${newPrevWidth}px`;
-      nextSibling!.style.flex = resizerType === 'input-editor' ? '1' : `0 0 ${newNextWidth}px`;
-
-      if (resizerType === 'editor-options') {
-        nextSibling!.style.flex = `0 0 ${newNextWidth}px`;
-      }
-    };
-
-    const onMouseUp = () => {
-      resizer.classList.remove('dragging');
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-    };
-
-    resizer.addEventListener('mousedown', (e: MouseEvent) => {
-      e.preventDefault();
-      startX = e.clientX;
-      startPrevWidth = prevSibling!.offsetWidth;
-      startNextWidth = nextSibling!.offsetWidth;
-      resizer.classList.add('dragging');
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
-    });
+    this.bindResizerDrag(
+      resizer,
+      'col-resize',
+      () => {
+        startPrevWidth = prev.offsetWidth;
+        startNextWidth = next.offsetWidth;
+      },
+      (dx) => {
+        const newPrevWidth = Math.max(200, startPrevWidth + dx);
+        const newNextWidth = Math.max(200, startNextWidth - dx);
+        if (resizerType === 'input-editor') {
+          prev.style.flex = `0 0 ${newPrevWidth}px`;
+          next.style.flex = '1';
+        } else {
+          next.style.flex = `0 0 ${newNextWidth}px`;
+        }
+      },
+      () => this.spreadEditor.resize(),
+    );
   }
 
   private setupPanelResizer(resizer: HTMLElement): void {
@@ -593,51 +584,36 @@ export class App {
     }
 
     if (!prevSibling || !nextSibling) return;
+    const prev = prevSibling;
+    const next = nextSibling;
 
-    let startY = 0;
     let startPrevHeight = 0;
     let startNextHeight = 0;
 
-    const onMouseMove = (e: MouseEvent) => {
-      const dy = e.clientY - startY;
-
-      // Calculate new heights
-      const newPrevHeight = Math.max(100, startPrevHeight + dy);
-      const newNextHeight = Math.max(50, startNextHeight - dy);
-
-      prevSibling!.style.flex = `0 0 ${newPrevHeight}px`;
-      prevSibling!.style.minHeight = `${newPrevHeight}px`;
-      prevSibling!.style.maxHeight = 'none';
-      nextSibling!.style.flex = `0 0 ${newNextHeight}px`;
-      nextSibling!.style.minHeight = `${newNextHeight}px`;
-      nextSibling!.style.maxHeight = 'none';
-    };
-
-    const onMouseUp = () => {
-      resizer.classList.remove('dragging');
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-    };
-
-    resizer.addEventListener('mousedown', (e: MouseEvent) => {
-      e.preventDefault();
-      startY = e.clientY;
-      startPrevHeight = prevSibling!.offsetHeight;
-      startNextHeight = nextSibling!.offsetHeight;
-      resizer.classList.add('dragging');
-      document.body.style.cursor = 'row-resize';
-      document.body.style.userSelect = 'none';
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
-    });
+    this.bindResizerDrag(
+      resizer,
+      'row-resize',
+      () => {
+        startPrevHeight = prev.offsetHeight;
+        startNextHeight = next.offsetHeight;
+      },
+      (_dx, dy) => {
+        const newPrevHeight = Math.max(100, startPrevHeight + dy);
+        const newNextHeight = Math.max(50, startNextHeight - dy);
+        prev.style.flex = `0 0 ${newPrevHeight}px`;
+        prev.style.minHeight = `${newPrevHeight}px`;
+        prev.style.maxHeight = 'none';
+        next.style.flex = `0 0 ${newNextHeight}px`;
+        next.style.minHeight = `${newNextHeight}px`;
+        next.style.maxHeight = 'none';
+      },
+    );
   }
 
   private setupStateListeners(): void {
     // Reflow when requested
     appState.onReflowRequest(() => {
-      this.performReflow();
+      void this.performReflow();
     });
 
     // Keep the font service's custom-font registry in sync with project
@@ -668,14 +644,13 @@ export class App {
     // Reflow when fonts finish loading (measurements may change)
     // Use a debounce to avoid multiple reflows if many fonts load in succession
     let fontReflowTimeout: number | null = null;
-    googleFonts.onFontLoaded(() => {
+    fontService.onFontLoaded(() => {
       if (fontReflowTimeout) {
         clearTimeout(fontReflowTimeout);
       }
       fontReflowTimeout = window.setTimeout(() => {
-        clearMeasurementCache();
-        this.performReflow();
         fontReflowTimeout = null;
+        void bridge.clearMeasurementCache().finally(() => this.performReflow());
       }, 100);
     });
 
@@ -685,28 +660,59 @@ export class App {
     }) as EventListener);
   }
 
-  private performReflow(): void {
-    // Always clear measurement cache to ensure fresh measurements with loaded fonts
-    clearMeasurementCache();
+  /**
+   * Re-run the text flow in Rust. Calls coalesce: while one reflow is in
+   * flight, further requests schedule exactly one follow-up. A result is
+   * only applied if the inputs it was computed from are still current —
+   * edits made during the round trip (e.g. moving an item on a static
+   * page) are never overwritten; the reflow simply runs again.
+   */
+  private performReflow(): Promise<void> {
+    if (this.reflowInFlight) {
+      this.reflowAgain = true;
+      return this.reflowInFlight;
+    }
+    const run = async () => {
+      do {
+        this.reflowAgain = false;
+        await this.reflowOnce();
+      } while (this.reflowAgain);
+    };
+    this.reflowInFlight = run().finally(() => {
+      this.reflowInFlight = null;
+    });
+    return this.reflowInFlight;
+  }
 
-    // Get all markdown files and concatenate their content in order
+  private async reflowOnce(): Promise<void> {
     const project = appState.getProject();
-    const markdownFiles = project.files.filter(f => f.type === 'markdown');
+    const markdown = project.files.filter(f => f.type === 'markdown').map(f => f.content).join('\n\n');
+    // Images must be in the native store so markdown images can be sized.
+    await this.syncFilesNow();
+    let result;
+    try {
+      result = await bridge.reflow(markdown, snapshot(project));
+    } catch (e) {
+      console.error('Reflow failed:', e);
+      return;
+    }
 
-    // Concatenate all markdown content with double newlines between files
-    // (empty string if no markdown files - static spreads will still be processed)
-    const combinedContent = markdownFiles.map(f => f.content).join('\n\n');
+    const current = appState.getProject();
+    const stale =
+      current.signatures !== project.signatures ||
+      current.files !== project.files ||
+      current.outputOptions !== project.outputOptions ||
+      current.layoutOptions !== project.layoutOptions ||
+      current.fontOptions !== project.fontOptions ||
+      current.headerFooter !== project.headerFooter ||
+      current.blankPages !== project.blankPages;
+    if (stale) {
+      this.reflowAgain = true;
+      return;
+    }
 
-    // Perform text flow on combined content (also merges static spreads)
-    const result = textFlowEngine.reflow(combinedContent);
-
-    // Update project with flow result
     appState.updateProject({ signatures: result.signatures });
-
-    // Update spread editor
     this.spreadEditor.render();
-
-    // Update document info
     this.updateDocumentInfo(appState.getProject());
   }
 
@@ -734,10 +740,7 @@ function stripExtension(name: string): string {
   return name.replace(/\.printfold$/i, '');
 }
 
-function uint8ArrayToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
+function errorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return String(e);
 }

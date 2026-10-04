@@ -14,7 +14,7 @@ import type {
   FontStyle,
   RichTextLine,
 } from '../../../types';
-import type { MeasuredSection } from '../../../services/textFlow/types';
+import type { MeasuredSection } from '../../../types';
 
 /**
  * Render flowed content into the supplied group. Square text-flow items use

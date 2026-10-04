@@ -108,6 +108,31 @@ const SERIF_FALLBACKS: &[&str] = &["Times", "Times New Roman", "Liberation Serif
 const SANS_FALLBACKS: &[&str] = &["Helvetica", "Arial", "Liberation Sans", "DejaVu Sans", "FreeSans"];
 const MONO_FALLBACKS: &[&str] = &["Courier", "Courier New", "Menlo", "Liberation Mono", "DejaVu Sans Mono", "FreeMono"];
 
+/// Metric-compatible stand-ins for common families that may be missing,
+/// mirroring the aliases WebKit gets from the platform (fontconfig on Linux,
+/// CoreText on Apple) so the layout engine picks the same face the webview
+/// renders with.
+const FAMILY_ALIASES: &[(&str, &[&str])] = &[
+    ("arial", &["Helvetica", "Liberation Sans", "Arimo"]),
+    ("helvetica", &["Helvetica Neue", "Arial", "Liberation Sans", "Arimo"]),
+    ("helvetica neue", &["Helvetica", "Arial", "Liberation Sans"]),
+    ("times new roman", &["Times", "Liberation Serif", "Tinos"]),
+    ("times", &["Times New Roman", "Liberation Serif", "Tinos"]),
+    ("courier new", &["Courier", "Liberation Mono", "Cousine"]),
+    ("courier", &["Courier New", "Liberation Mono", "Cousine"]),
+    ("georgia", &["Gelasio", "DejaVu Serif"]),
+    ("verdana", &["DejaVu Sans"]),
+    ("menlo", &["DejaVu Sans Mono"]),
+    ("monaco", &["Menlo", "DejaVu Sans Mono"]),
+];
+
+/// Order of last-resort fallbacks. WebKit on Apple platforms falls back to
+/// Times for unknown families; on Linux fontconfig's default is a sans.
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+const DEFAULT_FALLBACKS: [&[&str]; 2] = [SERIF_FALLBACKS, SANS_FALLBACKS];
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+const DEFAULT_FALLBACKS: [&[&str]; 2] = [SANS_FALLBACKS, SERIF_FALLBACKS];
+
 pub struct FontRegistry {
     db: Database,
     families: HashMap<String, Vec<ID>>,
@@ -322,16 +347,22 @@ impl FontRegistry {
             if let Some(generic) = Self::generic_fallbacks(&name) {
                 result = generic.iter().find_map(|g| self.best_in_family(&g.to_lowercase(), bold, italic));
             } else {
-                result = self.best_in_family(&name.to_lowercase(), bold, italic);
+                let key = name.to_lowercase();
+                result = self.best_in_family(&key, bold, italic).or_else(|| {
+                    FAMILY_ALIASES
+                        .iter()
+                        .find(|(k, _)| *k == key)
+                        .and_then(|(_, alts)| alts.iter().find_map(|a| self.best_in_family(&a.to_lowercase(), bold, italic)))
+                });
             }
             if result.is_some() {
                 break;
             }
         }
         if result.is_none() {
-            result = SERIF_FALLBACKS
+            result = DEFAULT_FALLBACKS
                 .iter()
-                .chain(SANS_FALLBACKS)
+                .flat_map(|list| list.iter())
                 .find_map(|g| self.best_in_family(&g.to_lowercase(), bold, italic));
         }
         if result.is_none() {

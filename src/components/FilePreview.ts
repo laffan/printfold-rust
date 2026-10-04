@@ -9,7 +9,8 @@ import { EditorState } from '@codemirror/state';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { appState } from '../services/state';
-import { extractFootnotes } from '../services/textFlow/footnotes';
+import { env } from '../services/environment';
+import { extractFootnotes } from '../services/text/footnotes';
 import type { ProjectFile } from '../types';
 
 export class FilePreview {
@@ -28,7 +29,7 @@ export class FilePreview {
     this.downloadBtn = document.getElementById('btn-download-file') as HTMLButtonElement;
     this.cursorSyncBtn = document.getElementById('btn-cursor-sync') as HTMLButtonElement;
 
-    this.downloadBtn.addEventListener('click', () => this.downloadCurrentFile());
+    this.downloadBtn.addEventListener('click', () => void this.downloadCurrentFile());
 
     this.cursorSyncBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -347,48 +348,30 @@ export class FilePreview {
     }
   }
 
-  private downloadCurrentFile(): void {
+  private async downloadCurrentFile(): Promise<void> {
     if (!this.currentFile) return;
-
-    let content: string;
-    let mimeType: string;
     const filename = this.currentFile.name;
 
+    let bytes: Uint8Array;
     if (this.currentFile.type === 'markdown') {
-      // For markdown, get the current content from the editor (includes any edits)
-      content = this.editor?.state.doc.toString() || this.currentFile.content;
-      mimeType = 'text/markdown';
-
-      const blob = new Blob([content], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      // For markdown, take the editor's content (includes unsaved edits)
+      const content = this.editor?.state.doc.toString() || this.currentFile.content;
+      bytes = new TextEncoder().encode(content);
     } else if (this.currentFile.isBase64) {
       // Images and fonts are stored as base64.
-      const ext = filename.split('.').pop()?.toLowerCase() || 'bin';
-      if (this.currentFile.type === 'image') {
-        mimeType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
-      } else if (this.currentFile.type === 'font') {
-        mimeType = ext === 'otf' ? 'font/otf' : ext === 'woff' ? 'font/woff' : 'font/ttf';
-      } else {
-        mimeType = 'application/octet-stream';
-      }
-
       const binary = atob(this.currentFile.content);
-      const bytes = new Uint8Array(binary.length);
+      bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) {
         bytes[i] = binary.charCodeAt(i);
       }
-      const blob = new Blob([bytes], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+    } else {
+      return;
     }
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    await env.saveFile({
+      defaultName: filename,
+      filters: ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : undefined,
+      content: bytes,
+    });
   }
 }

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use printfold_core::flow::{reflow, FlowRequest, Measurer};
 use printfold_core::fonts::{FontRegistry, WidthCache};
 use printfold_core::model::*;
-use printfold_core::pdf::{generate_pdf, generate_test_page, pages_needing_prerender, FileMeta, PdfContext};
+use printfold_core::pdf::{generate_pdf, generate_test_page, prerender_plan, FileMeta, PdfContext};
 
 fn out_dir() -> std::path::PathBuf {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/test-output");
@@ -62,8 +62,8 @@ fn generates_booklet_and_sequential_pdfs() {
     let files = vec![FileMeta { id: "img1".into(), name: "pic.png".into(), file_type: "image".into() }];
     let lookup = |id: &str| (id == "img1").then(|| png.clone());
     let pre: HashMap<u32, Vec<u8>> = HashMap::new();
-    let ctx = PdfContext { project: &project, files: &files, pre_rendered: &pre, file_bytes: &lookup };
-    assert!(!pages_needing_prerender(&project).is_empty());
+    let ctx = PdfContext { project: &project, files: &files, pre_rendered: &pre, pre_rendered_backgrounds: &pre, file_bytes: &lookup };
+    assert!(!prerender_plan(&project).overlay.is_empty());
 
     let pdf = generate_pdf(&mut reg, &ctx).expect("pdf");
     assert!(pdf.starts_with(b"%PDF"));
@@ -71,13 +71,13 @@ fn generates_booklet_and_sequential_pdfs() {
 
     let mut seq = project.clone();
     seq.output_options.booklet_type = Some("doubleSided".into());
-    let ctx = PdfContext { project: &seq, files: &files, pre_rendered: &pre, file_bytes: &lookup };
+    let ctx = PdfContext { project: &seq, files: &files, pre_rendered: &pre, pre_rendered_backgrounds: &pre, file_bytes: &lookup };
     let pdf = generate_pdf(&mut reg, &ctx).expect("pdf");
     std::fs::write(out_dir().join("double-sided.pdf"), &pdf).unwrap();
 
     let mut test = project.clone();
     test.output_options.duplex_offset_x = Some(2.0 * 72.0 / 25.4);
-    let ctx = PdfContext { project: &test, files: &files, pre_rendered: &pre, file_bytes: &lookup };
+    let ctx = PdfContext { project: &test, files: &files, pre_rendered: &pre, pre_rendered_backgrounds: &pre, file_bytes: &lookup };
     let pdf = generate_test_page(&mut reg, &ctx).expect("pdf");
     assert!(pdf.starts_with(b"%PDF"));
     std::fs::write(out_dir().join("test-page.pdf"), &pdf).unwrap();

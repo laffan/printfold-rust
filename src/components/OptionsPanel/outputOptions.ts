@@ -7,7 +7,8 @@ import { appState } from '../../services/state';
 import type { OutputOptions, BookletType, PagePlacement } from '../../types';
 import { getOrientedSheetSize, UNIT_CONVERSIONS } from '../../types';
 import { bindSelect, bindCheckbox, type DebounceCallback } from './helpers';
-import { PDFGenerator } from '../../services/pdfGenerator';
+import { generateTestPage } from '../../services/pdfExport';
+import { showAlert } from '../../services/dialogs';
 import { env } from '../../services/environment';
 import { createColorPicker, ColorPicker } from '../FillPicker';
 
@@ -184,8 +185,7 @@ export function setupOutputOptions(debounce: (fn: DebounceCallback) => void): vo
   if (printTestPageBtn) {
     printTestPageBtn.addEventListener('click', async () => {
       try {
-        const generator = new PDFGenerator();
-        const pdfBytes = await generator.generateTestPage();
+        const pdfBytes = await generateTestPage();
         await env.saveFile({
           defaultName: 'duplex-test-page.pdf',
           filters: [{ name: 'PDF', extensions: ['pdf'] }],
@@ -193,7 +193,7 @@ export function setupOutputOptions(debounce: (fn: DebounceCallback) => void): vo
         });
       } catch (error) {
         console.error('Test page generation failed:', error);
-        alert('Failed to generate test page. See console for details.');
+        await showAlert(`Failed to generate test page: ${error instanceof Error ? error.message : String(error)}`);
       }
     });
   }

@@ -52,15 +52,15 @@ export function renderColorTab(
     callbacks.onColorChange(state.hue, newSaturation, newValue);
   };
 
-  satValCanvas.addEventListener('mousedown', (e) => {
+  satValCanvas.addEventListener('pointerdown', (e) => {
     handleSatVal(e);
     const onMove = (e: MouseEvent) => handleSatVal(e);
     const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
     };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
   });
 
   satValArea.appendChild(satValCanvas);
@@ -93,15 +93,15 @@ export function renderColorTab(
     callbacks.onColorChange(newHue, state.saturation, state.value);
   };
 
-  hueSlider.addEventListener('mousedown', (e) => {
+  hueSlider.addEventListener('pointerdown', (e) => {
     handleHue(e);
     const onMove = (e: MouseEvent) => handleHue(e);
     const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
     };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
   });
 
   hueRow.appendChild(hueSlider);

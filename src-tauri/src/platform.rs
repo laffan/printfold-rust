@@ -7,6 +7,20 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime};
 
 pub const PROJECT_EXT: &str = "printfold";
+
+/// End-to-end test hook: when `PRINTFOLD_E2E_DIR` is set, dialogs are
+/// bypassed — new projects and saved files go to that folder, and
+/// `PRINTFOLD_E2E_PICK` (paths separated by `|`) answers file pickers.
+/// Unset in normal use.
+pub fn e2e_dir() -> Option<PathBuf> {
+    std::env::var_os("PRINTFOLD_E2E_DIR").map(PathBuf::from)
+}
+
+pub fn e2e_picks() -> Option<Vec<PathBuf>> {
+    e2e_dir()?;
+    let raw = std::env::var("PRINTFOLD_E2E_PICK").ok()?;
+    Some(raw.split('|').filter(|s| !s.is_empty()).map(PathBuf::from).collect())
+}
 const MAX_RECENTS: usize = 10;
 
 /// Write via a temporary sibling and rename, so a crash mid-save can never

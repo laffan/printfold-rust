@@ -104,6 +104,18 @@ export interface DocumentSection {
   endnoteNumber?: number;
 }
 
+// A section after layout (produced by the Rust engine): the wrapped lines
+// that landed on a page plus their heights. Image sections carry the laid
+// out picture size (absent when the image file is missing).
+export interface MeasuredSection extends DocumentSection {
+  measuredHeight: number;
+  lines: string[];           // Plain text lines
+  richLines?: RichTextLine[]; // Rich text lines with inline styling
+  lineHeights: number[];
+  imageWidth?: number;
+  imageHeight?: number;
+}
+
 // A footnote definition extracted from the source markdown.
 export interface FootnoteDefinition {
   id: string;       // The user-supplied label (e.g. '1', 'note-a')

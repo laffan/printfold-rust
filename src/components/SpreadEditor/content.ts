@@ -6,12 +6,24 @@
 import Konva from 'konva';
 import { appState } from '../../services/state';
 import type { PageContent, FontStyle, TextSpan, RichTextLine, FontOptions, FootnoteDefinition } from '../../types';
-import type { MeasuredSection } from '../../services/textFlow/types';
+import type { MeasuredSection } from '../../types';
 import {
   FOOTNOTE_RULE_GAP,
   FOOTNOTE_RULE_THICKNESS,
   FOOTNOTE_RULE_WIDTH_RATIO,
-} from '../../services/textFlow/footnotes';
+} from '../../services/text/footnotes';
+
+const CAPTION_FONT_SIZE = 9;
+const CAPTION_GAP = 4;
+
+function imageMime(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase();
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'webp') return 'image/webp';
+  if (ext === 'gif') return 'image/gif';
+  return 'image/png';
+}
+
 
 /**
  * Draw page content (text sections, images, headings)
@@ -46,68 +58,60 @@ export function drawPageContent(
       }
     }
 
-    // Handle image placeholders
+    // Markdown images. The engine sized the picture (full content width at
+    // its aspect ratio, scaled to fit a page) and its measured height
+    // includes the caption, so text below never overlaps the image.
     if (section.type === 'image') {
+      const measured = section as MeasuredSection;
       const imageFile = section.imageRef ? appState.getImageByName(section.imageRef) : null;
+      const blockHeight = measured.measuredHeight ?? 110 + project.layoutOptions.paragraphSpacing;
 
-      if (imageFile) {
-        const imgX = x;
+      if (imageFile && measured.imageWidth && measured.imageHeight) {
+        const displayWidth = measured.imageWidth;
+        const displayHeight = measured.imageHeight;
+        const imgX = x + Math.max(0, width - displayWidth) / 2;
         const imgY = currentY;
-        const maxImgWidth = width; // Full content width
 
-        // Create placeholder while image loads
+        // Placeholder while the image decodes
         const placeholder = new Konva.Rect({
           x: imgX,
           y: imgY,
-          width: maxImgWidth,
-          height: 100,
+          width: displayWidth,
+          height: displayHeight,
           fill: '#f8f8f8',
           stroke: '#ddd',
           strokeWidth: 1,
         });
         layer.add(placeholder);
 
-        // Load and display image asynchronously with correct aspect ratio
         const img = new window.Image();
         img.onload = () => {
           placeholder.destroy();
-
-          // Calculate size: full width, auto height maintaining aspect ratio
-          const aspectRatio = img.width / img.height;
-          const displayWidth = maxImgWidth;
-          const displayHeight = displayWidth / aspectRatio;
-
-          const konvaImage = new Konva.Image({
-            x: imgX,
-            y: imgY,
-            width: displayWidth,
-            height: displayHeight,
-            image: img,
-          });
-          layer.add(konvaImage);
-
-          // Add caption if present
-          if (section.content && section.content.trim()) {
-            const captionText = new Konva.Text({
-              x: imgX,
-              y: imgY + displayHeight + 4,
-              text: section.content,
-              fontSize: 9,
-              fontStyle: 'italic',
-              fill: '#666666',
-              width: displayWidth,
-              align: 'center',
-            });
-            layer.add(captionText);
-          }
-
+          layer.add(new Konva.Image({ x: imgX, y: imgY, width: displayWidth, height: displayHeight, image: img }));
           layer.draw();
         };
-        img.src = `data:image/png;base64,${imageFile.content}`;
+        img.src = `data:${imageMime(imageFile.name)};base64,${imageFile.content}`;
 
-        currentY += 120; // Will be adjusted when image loads
+        // Caption lines (wrapped by the engine), centred under the image.
+        let captionY = imgY + displayHeight + CAPTION_GAP;
+        for (const line of measured.lines || []) {
+          const captionText = new Konva.Text({
+            x: imgX,
+            y: captionY,
+            text: line,
+            fontSize: CAPTION_FONT_SIZE,
+            fontFamily: 'Arial',
+            fontStyle: 'italic',
+            fill: '#666666',
+            width: displayWidth,
+            align: 'center',
+            wrap: 'none',
+          });
+          layer.add(captionText);
+          captionY += CAPTION_FONT_SIZE;
+        }
       } else {
-        // Draw placeholder
+        // Image not in the project: placeholder box
         const placeholder = new Konva.Rect({
           x,
           y: currentY,
@@ -131,8 +135,8 @@ export function drawPageContent(
           align: 'center',
         });
         layer.add(placeholderText);
-        currentY += 110;
       }
+      currentY += blockHeight;
       continue;
     }
 
@@ -487,10 +491,17 @@ function drawRichLineKonva(
       layer.add(bgRect);
     }
 
-    // Determine text decoration
-    let textDecoration = '';
+    // Strikethrough is drawn as a separate line so it can use the
+    // configured line colour (Konva's line-through uses the text colour).
+    const textDecoration = '';
     if (span.strikethrough) {
-      textDecoration = 'line-through';
+      const lineColor = fontOptions.strikethrough?.lineColor || baseStyle.color;
+      layer.add(new Konva.Line({
+        points: [currentX, y + fontSize / 2, currentX + spanWidth, y + fontSize / 2],
+        stroke: lineColor,
+        strokeWidth: fontSize / 15,
+        listening: false,
+      }));
     }
 
     // Footnote-reference markers render raised so they read as
@@ -499,12 +510,14 @@ function drawRichLineKonva(
       ? -baseStyle.fontSize * 0.35
       : 0;
 
-    // Determine fill color: highlights, footnote numbers, or base color
+    // Determine fill color: highlights, footnote numbers, strikethrough, or base color
     let spanFill = baseStyle.color;
     if (span.highlight && fontOptions.highlight) {
       spanFill = fontOptions.highlight.textColor;
     } else if (span.footnoteNumber !== undefined && fontOptions.footnoteNumberColor) {
       spanFill = fontOptions.footnoteNumberColor;
+    } else if (span.strikethrough && fontOptions.strikethrough) {
+      spanFill = fontOptions.strikethrough.textColor;
     }
 
     // Create text node for this span

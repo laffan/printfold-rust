@@ -1,11 +1,15 @@
 /**
- * Font Service - Manages fonts for both web and Electron environments
+ * Font Service
  *
- * For Styles (body, headings, etc.): Uses web-safe fonts (web) or system fonts (Electron)
- * For Static Page Items: Uses Google Fonts (rendered to images, no CORS issues)
+ * For Styles (body, headings, etc.): the installed system fonts, listed by
+ * the Rust engine (which measures and embeds the same font files), with
+ * web-safe fonts as a fallback list.
+ * For Static Page Items: Google Fonts + web-safe fonts (rendered to images).
+ * Custom fonts: user uploads, registered with both WebKit (@font-face) and
+ * the Rust engine so layout, canvas and PDF all use the same file.
  */
 
-import { env } from './environment';
+import { bridge, type FamilyVariants } from './bridge';
 
 export interface FontDefinition {
   name: string;
@@ -99,14 +103,6 @@ export const GOOGLE_FONTS: FontDefinition[] = [
   { name: 'Inconsolata', family: 'Inconsolata', category: 'monospace', weights: [400, 700] },
 ];
 
-// Font file data for PDF embedding
-export interface FontFileData {
-  regular?: Uint8Array;
-  bold?: Uint8Array;
-  italic?: Uint8Array;
-  boldItalic?: Uint8Array;
-}
-
 function base64ToUint8Array(base64: string): Uint8Array {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -134,9 +130,8 @@ class FontService {
   // Track which fonts have been checked for availability
   private fontPreviewLoaded = new Map<string, boolean>();
 
-  // Cache for font file data (for PDF embedding in Electron)
-  private fontFileCache = new Map<string, FontFileData>();
-  private fontFileLoadingPromises = new Map<string, Promise<FontFileData | null>>();
+  // Real faces per family, from the native font registry.
+  private variantCache = new Map<string, Promise<FamilyVariants>>();
 
   // User-uploaded custom fonts. Keyed by font family name (the filename
   // without extension). The bytes are kept so we can embed the font in
@@ -155,7 +150,7 @@ class FontService {
   getStyleFonts(): FontDefinition[] {
     // In Electron, use system fonts if they loaded successfully with actual fonts
     // Fall back to web-safe fonts if system fonts are empty (e.g., shell commands failed in packaged app)
-    if (env.isElectron && this.systemFontsLoaded && this.systemFonts.length > 0) {
+    if (this.systemFontsLoaded && this.systemFonts.length > 0) {
       return this.systemFonts;
     }
     return WEB_SAFE_FONTS;
@@ -210,15 +205,18 @@ class FontService {
     this.injectCustomFontFace(family, ext, base64Content);
     this.notifyCustomFontsChanged();
 
-    // Defer the font-loaded notification until the browser has actually
-    // parsed the @font-face descriptor. Without this, downstream listeners
-    // (App.ts reflows, dropdown previews) can re-measure/re-render before
-    // the font becomes available and end up using the fallback typeface.
-    if ('fonts' in document) {
-      document.fonts.load(`16px "${family}"`).then(() => this.notifyFontLoaded());
-    } else {
-      this.notifyFontLoaded();
-    }
+    // Defer the font-loaded notification until both the browser has parsed
+    // the @font-face descriptor and the layout engine has the font. Without
+    // this, downstream listeners (App.ts reflows, dropdown previews) can
+    // re-measure/re-render before the font is available and end up using
+    // the fallback typeface.
+    const browserReady = 'fonts' in document
+      ? document.fonts.load(`16px "${family}"`).catch(() => undefined)
+      : Promise.resolve();
+    const engineReady = bridge.fontsRegister(family, base64Content).catch((e) => {
+      console.warn(`Layout engine could not load font "${family}":`, e);
+    });
+    void Promise.all([browserReady, engineReady]).then(() => this.notifyFontLoaded());
     return family;
   }
 
@@ -230,10 +228,9 @@ class FontService {
     this.customFonts.delete(family);
     this.customFontBytes.delete(family);
     this.customFontExt.delete(family);
-    this.fontFileCache.delete(family);
     this.rebuildCustomFontFaces();
     this.notifyCustomFontsChanged();
-    this.notifyFontLoaded();
+    void bridge.fontsUnregister(family).catch(() => undefined).then(() => this.notifyFontLoaded());
   }
 
   /**
@@ -296,10 +293,19 @@ class FontService {
   }
 
   /**
-   * Check if running in Electron
+   * Which real faces (regular/bold/italic/bold italic) a family provides.
+   * Custom fonts are single-face uploads.
    */
-  isElectron(): boolean {
-    return env.isElectron;
+  getFontVariants(fontFamily: string): Promise<FamilyVariants> {
+    if (this.customFonts.has(fontFamily)) {
+      return Promise.resolve({ regular: true, bold: false, italic: false, boldItalic: false });
+    }
+    let cached = this.variantCache.get(fontFamily);
+    if (!cached) {
+      cached = bridge.fontsVariants(fontFamily).catch(() => ({ regular: true, bold: true, italic: true, boldItalic: true }));
+      this.variantCache.set(fontFamily, cached);
+    }
+    return cached;
   }
 
   /**
@@ -314,14 +320,14 @@ class FontService {
    * Load system fonts from Electron (async)
    */
   async loadSystemFonts(): Promise<void> {
-    if (!env.isElectron || this.systemFontsLoaded || this.systemFontsLoading) {
+    if (this.systemFontsLoaded || this.systemFontsLoading) {
       return;
     }
 
     this.systemFontsLoading = true;
 
     try {
-      const fonts = await window.electronAPI?.getSystemFonts?.();
+      const fonts = await bridge.fontsList();
       if (fonts && Array.isArray(fonts)) {
         this.systemFonts = fonts.map((fontName: string) => ({
           name: fontName,
@@ -505,166 +511,6 @@ class FontService {
     }
 
     return true; // Assume available if we can't check
-  }
-
-  // ============================================
-  // Font File Loading (for PDF embedding in Electron)
-  // ============================================
-
-  /**
-   * Check if font file embedding is available. True when Electron exposes
-   * system-font extraction OR when the user has registered any custom
-   * fonts (whose raw bytes we can embed directly via pdf-lib + fontkit).
-   */
-  canEmbedFonts(): boolean {
-    return (env.isElectron && !!window.electronAPI?.getFontFile) || this.customFonts.size > 0;
-  }
-
-  /**
-   * Load font file data for a font family (all variants)
-   * Returns cached data if available, otherwise loads from system
-   */
-  async loadFontFileData(fontFamily: string): Promise<FontFileData | null> {
-    // Custom user-uploaded fonts take precedence and are available in
-    // every environment (we keep their bytes in memory).
-    const primary = this.extractPrimaryFontName(fontFamily);
-    const customBytes = this.customFontBytes.get(primary);
-    if (customBytes) {
-      return { regular: customBytes };
-    }
-
-    if (!(env.isElectron && !!window.electronAPI?.getFontFile)) {
-      return null;
-    }
-
-    // Check cache first
-    if (this.fontFileCache.has(fontFamily)) {
-      return this.fontFileCache.get(fontFamily)!;
-    }
-
-    // Check if already loading
-    if (this.fontFileLoadingPromises.has(fontFamily)) {
-      return this.fontFileLoadingPromises.get(fontFamily)!;
-    }
-
-    // Start loading
-    const loadPromise = this.doLoadFontFileData(fontFamily);
-    this.fontFileLoadingPromises.set(fontFamily, loadPromise);
-
-    try {
-      const data = await loadPromise;
-      if (data) {
-        this.fontFileCache.set(fontFamily, data);
-      }
-      return data;
-    } finally {
-      this.fontFileLoadingPromises.delete(fontFamily);
-    }
-  }
-
-  /**
-   * Load font file data for multiple font families
-   */
-  async loadMultipleFontFileData(fontFamilies: string[]): Promise<Map<string, FontFileData>> {
-    const results = new Map<string, FontFileData>();
-
-    await Promise.all(
-      fontFamilies.map(async (family) => {
-        const data = await this.loadFontFileData(family);
-        if (data) {
-          results.set(family, data);
-        }
-      })
-    );
-
-    return results;
-  }
-
-  /**
-   * Get cached font file data (returns null if not loaded)
-   */
-  getCachedFontFileData(fontFamily: string): FontFileData | null {
-    return this.fontFileCache.get(fontFamily) || null;
-  }
-
-  /**
-   * Clear font file cache
-   */
-  clearFontFileCache(): void {
-    this.fontFileCache.clear();
-  }
-
-  /**
-   * Extract the primary font name from a CSS font-family value
-   * e.g., '"Georgia", serif' -> 'Georgia'
-   * e.g., 'Palatino Linotype, Palatino, serif' -> 'Palatino Linotype'
-   */
-  private extractPrimaryFontName(fontFamily: string): string {
-    // Split by comma and take the first font
-    const parts = fontFamily.split(',');
-    let primary = parts[0].trim();
-
-    // Remove surrounding quotes
-    primary = primary.replace(/^["']|["']$/g, '');
-
-    // Skip generic fallbacks if they're the only thing left
-    const genericFallbacks = ['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy'];
-    if (genericFallbacks.includes(primary.toLowerCase())) {
-      // Try the next part if available
-      for (let i = 1; i < parts.length; i++) {
-        const next = parts[i].trim().replace(/^["']|["']$/g, '');
-        if (!genericFallbacks.includes(next.toLowerCase())) {
-          return next;
-        }
-      }
-    }
-
-    return primary;
-  }
-
-  private async doLoadFontFileData(fontFamily: string): Promise<FontFileData | null> {
-    if (!window.electronAPI?.getFontFile) {
-      return null;
-    }
-
-    // Extract primary font name from CSS font-family value
-    const primaryFont = this.extractPrimaryFontName(fontFamily);
-    console.log(`Font lookup: "${fontFamily}" -> primary: "${primaryFont}"`);
-
-    const data: FontFileData = {};
-    const variants: Array<{ key: keyof FontFileData; weight: 'normal' | 'bold'; style: 'normal' | 'italic' }> = [
-      { key: 'regular', weight: 'normal', style: 'normal' },
-      { key: 'bold', weight: 'bold', style: 'normal' },
-      { key: 'italic', weight: 'normal', style: 'italic' },
-      { key: 'boldItalic', weight: 'bold', style: 'italic' },
-    ];
-
-    // Load all variants in parallel
-    await Promise.all(
-      variants.map(async ({ key, weight, style }) => {
-        try {
-          const result = await window.electronAPI!.getFontFile(primaryFont, weight, style);
-          if (result.success && result.data) {
-            // Convert base64 to Uint8Array
-            const binaryString = atob(result.data);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i);
-            }
-            data[key] = bytes;
-          }
-        } catch (error) {
-          console.warn(`Failed to load ${key} variant of ${primaryFont}:`, error);
-        }
-      })
-    );
-
-    // Return null if no variants were loaded
-    if (!data.regular && !data.bold && !data.italic && !data.boldItalic) {
-      return null;
-    }
-
-    return data;
   }
 
   private async doLoadGoogleFont(font: FontDefinition): Promise<void> {

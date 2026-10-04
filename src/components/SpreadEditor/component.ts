@@ -14,6 +14,7 @@ import { drawMarginGuides, getMarginsForPage } from './margins';
 import { drawPageContent, getFontStyleForSection } from './content';
 import { switchToSelectedTab } from '../OptionsPanel/editPage';
 import { createSelectionMarquee, showContextMenu, createItemContextMenu, hideContextMenu } from './selection';
+import { PRESS, MOVE, RELEASE, TAP, isPrimaryPress, modifier, isTouch, onLongPress, enablePinchZoom } from './pointer';
 
 // Type for visual spreads (reading order pairs)
 interface VisualSpread {
@@ -583,8 +584,22 @@ export class SpreadEditor {
       this.stage.container().style.cursor = 'default';
     });
 
+    // Touch: two-finger pinch zooms and pans (a stray one-finger marquee
+    // that started the gesture is cancelled).
+    enablePinchZoom(
+      this.stage,
+      () => this.zoomLevel,
+      (zoom) => this.setZoom(zoom, true),
+      () => {
+        if (this.isMarqueeSelecting) {
+          this.selectionMarquee.cancelMarquee();
+          this.isMarqueeSelecting = false;
+        }
+      },
+    );
+
     // Click on background to deselect items (not pages - page selection is handled by page click areas)
-    this.stage.on('click', (e) => {
+    this.stage.on(TAP, (e) => {
       // Deselect item if clicking on stage, layer, or a non-item shape
       const target = e.target;
       const targetLayer = target.getLayer?.();
@@ -607,7 +622,7 @@ export class SpreadEditor {
 
       if (isOnAnyLayer && !isItem && !isTransformer && !this.isMarqueeSelecting) {
         // Deselect items when clicking on background (unless shift is held)
-        if (!e.evt.shiftKey) {
+        if (!modifier(e.evt, 'shiftKey')) {
           appState.clearSelection();
           this.updateTransformer();
         }
@@ -615,10 +630,10 @@ export class SpreadEditor {
     });
 
     // Marquee selection - start on mousedown on empty space
-    this.stage.on('mousedown', (e) => {
-      // Only start marquee on left click on empty space
-      if (e.evt.button !== 0) return;
-      if (e.evt.shiftKey) return; // Shift+click is for panning
+    this.stage.on(PRESS, (e) => {
+      // Only start marquee on left click / single touch on empty space
+      if (!isPrimaryPress(e.evt)) return;
+      if (modifier(e.evt, 'shiftKey')) return; // Shift+click is for panning
 
       const target = e.target;
       // Walk ancestor chain so composite items (text-flow groups) aren't
@@ -646,9 +661,10 @@ export class SpreadEditor {
       }
     });
 
-    // Update marquee on mousemove
-    this.stage.on('mousemove', (e) => {
+    // Update marquee on pointer move
+    this.stage.on(MOVE, (e) => {
       if (this.isMarqueeSelecting) {
+        if (isTouch(e.evt)) e.evt.preventDefault();
         const pos = this.stage.getPointerPosition();
         if (pos) {
           const stagePos = {
@@ -660,8 +676,8 @@ export class SpreadEditor {
       }
     });
 
-    // End marquee on mouseup
-    this.stage.on('mouseup', () => {
+    // End marquee on release
+    this.stage.on(RELEASE, () => {
       if (this.isMarqueeSelecting) {
         this.selectionMarquee.endMarquee();
       }
@@ -681,6 +697,27 @@ export class SpreadEditor {
         }
         this.showItemContextMenu(e.evt);
       }
+    });
+
+    // Touch: press and hold an item for the context menu.
+    onLongPress(this.stage, (point, target) => {
+      let node: Konva.Node | null = target;
+      let itemId: string | undefined;
+      while (node && itemId === undefined) {
+        itemId = node.getAttr?.('itemId');
+        node = node.getParent?.() ?? null;
+      }
+      if (!itemId) return;
+      if (this.isMarqueeSelecting) {
+        this.selectionMarquee.cancelMarquee();
+        this.isMarqueeSelecting = false;
+      }
+      if (!appState.getEditor().selectedItemIds.includes(itemId)) {
+        appState.selectItem(itemId);
+      }
+      const editorState = appState.getEditor();
+      if (editorState.selectedPageNumber === null) return;
+      showContextMenu(point.x, point.y, createItemContextMenu(editorState.selectedPageNumber, editorState.selectedItemIds));
     });
   }
 
@@ -1172,7 +1209,7 @@ export class SpreadEditor {
         fill: 'transparent',
         listening: true,
       });
-      versoArea.on('click', () => {
+      versoArea.on(TAP, () => {
         this.selectPage(spread.verso!.pageNumber, 'verso');
       });
       this.layer.add(versoArea);
@@ -1188,7 +1225,7 @@ export class SpreadEditor {
         fill: 'transparent',
         listening: true,
       });
-      rectoArea.on('click', () => {
+      rectoArea.on(TAP, () => {
         this.selectPage(spread.recto!.pageNumber, 'recto');
       });
       this.layer.add(rectoArea);

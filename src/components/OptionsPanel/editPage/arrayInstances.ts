@@ -104,8 +104,8 @@ function setupDraggableCap(capElement: HTMLElement, input: HTMLInputElement): vo
     capElement.classList.add('dragging');
     document.body.style.cursor = 'ew-resize';
 
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
+    document.addEventListener('pointermove', onMouseMove);
+    document.addEventListener('pointerup', onMouseUp);
   };
 
   const onMouseMove = (e: MouseEvent) => {
@@ -124,11 +124,11 @@ function setupDraggableCap(capElement: HTMLElement, input: HTMLInputElement): vo
     isDragging = false;
     capElement.classList.remove('dragging');
     document.body.style.cursor = '';
-    document.removeEventListener('mousemove', onMouseMove);
-    document.removeEventListener('mouseup', onMouseUp);
+    document.removeEventListener('pointermove', onMouseMove);
+    document.removeEventListener('pointerup', onMouseUp);
   };
 
-  capElement.addEventListener('mousedown', onMouseDown);
+  capElement.addEventListener('pointerdown', onMouseDown);
 }
 
 /**

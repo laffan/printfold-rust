@@ -112,7 +112,13 @@ AppState.prototype.getFile = function(fileId: string): ProjectFile | null {
 };
 
 AppState.prototype.getImageByName = function(name: string): ProjectFile | null {
-  return this.getProject().files.find(
-    f => f.type === 'image' && f.name.toLowerCase() === name.toLowerCase()
-  ) ?? null;
+  // Exact (case-insensitive) file name first, then the reference's last
+  // path component, so `![](images/pic.png)` finds `pic.png` (as the
+  // engine does when sizing images).
+  const images = this.getProject().files.filter(f => f.type === 'image');
+  const lower = name.trim().toLowerCase();
+  const base = (lower.split(/[\\/]/).pop() || lower).replace(/%20/g, ' ');
+  return images.find(f => f.name.toLowerCase() === lower)
+    ?? images.find(f => f.name.toLowerCase() === base)
+    ?? null;
 };

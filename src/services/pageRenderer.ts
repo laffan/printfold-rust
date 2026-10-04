@@ -6,10 +6,10 @@
 import Konva from 'konva';
 import { appState } from './state';
 import { calculateArrayPositions, getTotalArrayInstances } from '../components/SpreadEditor/items/arrayItems';
-import { applyTextTransform } from './textFlow';
+import { applyTextTransform } from './text/transform';
 import type { PageContent, PageItem, TextPageItem, ShapePageItem, ImagePageItem, TextFlowPageItem, FillConfig, FontStyle, RichTextLine, TextSpan } from '../types';
-import type { MeasuredSection } from './textFlow/types';
-import { buildPolygonPath, flattenPolygon, offsetFlatPolygon, buildFlatPath } from './textFlow/polygonPath';
+import type { MeasuredSection } from '../types';
+import { buildPolygonPath, flattenPolygon, offsetFlatPolygon, buildFlatPath } from './text/polygonPath';
 
 // Target DPI for print-quality rendering
 const PRINT_DPI = 300;
@@ -808,13 +808,29 @@ function renderTextFlowSquareSections(
  * @param adjacentPage Optional adjacent page for crossing items
  * @param includeTextContent If true, render text content (sections, headers, footers) as well
  */
+export interface RenderPageOptions {
+  /** Draw the page's text (for "render text as images" mode). */
+  includeTextContent?: boolean;
+  /**
+   * Draw the background fill and custom background image. Off for text
+   * pages, whose background is drawn beneath the vector text by the PDF
+   * engine — an opaque background in the overlay would hide the text.
+   */
+  includeBackground?: boolean;
+  /** Draw only the background (no items, no text). */
+  backgroundOnly?: boolean;
+}
+
 export async function renderPageToImage(
   page: PageContent,
   pageWidth: number,
   pageHeight: number,
   adjacentPage?: PageContent | null,
-  includeTextContent?: boolean
+  options: RenderPageOptions = {}
 ): Promise<string | null> {
+  const backgroundOnly = options.backgroundOnly === true;
+  const includeTextContent = !backgroundOnly && options.includeTextContent === true;
+  const includeBackground = backgroundOnly || options.includeBackground !== false;
   // Check if page has items worth rendering
   const hasOwnItems = page.items && page.items.length > 0;
   const hasCrossingItems = adjacentPage?.items?.some(item => {
@@ -824,10 +840,11 @@ export async function renderPageToImage(
       return item.x < 0;
     }
   });
-  const hasItems = hasOwnItems || hasCrossingItems;
+  const hasItems = !backgroundOnly && (hasOwnItems || hasCrossingItems);
   const hasTextContent = includeTextContent && page.sections && page.sections.length > 0;
 
-  if (!hasItems && !page.backgroundFill && !hasTextContent) {
+  const hasBackground = includeBackground && (!!page.backgroundFill || !!page.customBackgroundImageId);
+  if (!hasItems && !hasBackground && !hasTextContent) {
     return null;
   }
 
@@ -855,7 +872,7 @@ export async function renderPageToImage(
     const imageLoadPromises: Promise<void>[] = [];
 
     // Draw background if present
-    if (page.backgroundFill) {
+    if (includeBackground && page.backgroundFill) {
       const bgRect = new Konva.Rect({
         x: 0,
         y: 0,
@@ -866,13 +883,33 @@ export async function renderPageToImage(
       layer.add(bgRect);
     }
 
+    // Custom background image sits above the fill and below items (as in
+    // the editor). The original pre-render omitted it, so pages with both
+    // a custom background and items lost the background in the PDF.
+    if (includeBackground && page.customBackgroundImageId) {
+      const file = appState.getProject().files.find(f => f.id === page.customBackgroundImageId);
+      if (file) {
+        const bgImage = new Konva.Image({ x: 0, y: 0, width: scaledWidth, height: scaledHeight, image: undefined });
+        layer.add(bgImage);
+        imageLoadPromises.push(new Promise<void>((resolve) => {
+          const img = new window.Image();
+          img.onload = () => {
+            bgImage.image(img);
+            resolve();
+          };
+          img.onerror = () => resolve();
+          img.src = `data:${imageMimeType(file.name)};base64,${file.content}`;
+        }));
+      }
+    }
+
     // Render text content if requested (for "render text as images" mode)
     if (includeTextContent && page.sections && page.sections.length > 0) {
       renderTextContent(layer, page, pageWidth, pageHeight, SCALE_FACTOR);
     }
 
     // Render page items (including array instances)
-    if (page.items) {
+    if (page.items && !backgroundOnly) {
       for (const item of page.items) {
         // Text-flow items have multi-node content (one Konva.Text per flowed
         // line) so they don't fit createRenderNode's single-node model.
@@ -916,7 +953,7 @@ export async function renderPageToImage(
 
     // Render crossing items from adjacent page (including array instances)
     // Konva's canvas automatically clips at boundaries, so circles etc. will be properly clipped
-    if (adjacentPage?.items) {
+    if (adjacentPage?.items && !backgroundOnly) {
       const crossingItems = adjacentPage.items.filter(item => {
         if (page.isRecto) {
           // This is recto, adjacent is verso - items extending right past verso boundary
@@ -986,6 +1023,14 @@ export async function renderPageToImage(
 /**
  * Check if a page needs raster rendering (has complex fills, custom fonts, arrays, etc.)
  */
+function imageMimeType(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase();
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'webp') return 'image/webp';
+  if (ext === 'gif') return 'image/gif';
+  return 'image/png';
+}
+
 export function pageNeedsRasterRendering(page: PageContent): boolean {
   if (!page.items || page.items.length === 0) {
     // Check background fill

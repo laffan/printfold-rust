@@ -1,0 +1,107 @@
+/**
+ * Platform adaptations: iPadOS touch input and safe areas.
+ *
+ * - Pointer-driven controls opt out of browser panning/zooming so drags
+ *   reach the app (canvas, colour pickers, resizers, scrub labels).
+ * - On touch screens (no hover) controls that only appeared on hover are
+ *   always visible, and hit targets grow to finger size.
+ */
+
+.konva-container,
+.column-resizer,
+.panel-resizer,
+.input-cap,
+.fill-satval-canvas,
+.fill-hue-slider,
+.fill-gradient-canvas,
+.fill-gradient-bar {
+  touch-action: none;
+}
+
+/* Long-press on the canvas opens PrintFold's context menu, not the
+   system text-selection callout. */
+.konva-container,
+.spread-thumbnails {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* iPad: respect the safe area (home indicator, rounded corners) when the
+   app fills the screen. */
+.is-mobile body {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  box-sizing: border-box;
+  height: 100vh;
+}
+
+/* iPad: keep the minimum column widths usable in split view. */
+.is-mobile .column {
+  min-width: 0;
+}
+
+@media (hover: none) {
+  /* Hover-revealed actions are always shown. */
+  .file-item .file-actions,
+  .file-item-image .file-actions {
+    opacity: 1;
+  }
+
+  /* Resizer handles: visible and wider for fingers. */
+  .column-resizer {
+    width: 14px;
+  }
+
+  .column-resizer::after,
+  .panel-resizer::after {
+    opacity: 1;
+  }
+
+  .panel-resizer {
+    height: 14px;
+  }
+
+  .column-resizer::after {
+    left: 6px;
+  }
+
+  .panel-resizer::after {
+    top: 6px;
+  }
+
+  /* Finger-sized buttons. */
+  .btn-icon {
+    min-width: 32px;
+    min-height: 32px;
+  }
+
+  .btn-small {
+    min-height: 30px;
+  }
+
+  .tab,
+  .tab-btn {
+    min-height: 34px;
+  }
+
+  .recent-remove {
+    width: 32px;
+    height: 32px;
+  }
+
+  .context-menu > div {
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+  }
+}
+
+/* Native <select> controls ignore the app's dark styling in WebKit (GTK
+   and iPadOS draw them light), so draw them ourselves with a chevron. */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%239ca3af' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 8px center !important;
+  padding-right: 24px !important;
+}

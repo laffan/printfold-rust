@@ -102,7 +102,7 @@ export function renderGradientTab(
       callbacks.render();
     });
 
-    handle.addEventListener('mousedown', (e) => {
+    handle.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
       const rect = stopsContainer.getBoundingClientRect();
@@ -123,8 +123,8 @@ export function renderGradientTab(
       };
 
       const onUp = () => {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
 
         // Sort stops by offset now that dragging is complete
         const sortedStops = [...state.gradientStops].sort((a, b) => a.offset - b.offset);
@@ -139,8 +139,8 @@ export function renderGradientTab(
         }
       };
 
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
     });
 
     stopsContainer.appendChild(handle);

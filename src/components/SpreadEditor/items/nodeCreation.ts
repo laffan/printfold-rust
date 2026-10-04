@@ -7,11 +7,11 @@ import { appState } from '../../../services/state';
 import { switchToSelectedTab } from '../../OptionsPanel/editPage';
 import { applyFillToShape } from './fill';
 import { startTextEditing } from './textEditing';
-import { applyTextTransform } from '../../../services/textFlow';
+import { applyTextTransform } from '../../../services/text/transform';
 import type { PageItem, TextPageItem, ShapePageItem, ImagePageItem, TextFlowPageItem } from '../../../types';
 import { drawTextFlowItemContent } from './textFlowRendering';
 import { addPolygonVertexHandles } from './vertexHandles';
-import { buildPolygonPath, flattenPolygon, offsetFlatPolygon, buildFlatPath } from '../../../services/textFlow/polygonPath';
+import { buildPolygonPath, flattenPolygon, offsetFlatPolygon, buildFlatPath } from '../../../services/text/polygonPath';
 
 
 /**

@@ -92,7 +92,9 @@ pub fn draw_page(
 /// Solid background fill and custom background image (fallback path; the
 /// pre-rendered page image normally carries these).
 fn draw_background(p: &mut Painter, s: &mut Surface, ctx: &PdfContext, page: &PageContent, bx: PageBox) {
-    if let Some(fill) = &page.background_fill {
+    if let Some(img) = ctx.background_image(p, page.page_number) {
+        p.draw_image(s, img, bx.x, bx.top, bx.width, bx.height, 1.0);
+    } else if let Some(fill) = &page.background_fill {
         if let Some(color) = super::items::fill_fallback_color(fill) {
             p.fill_rect(s, bx.x, bx.top, bx.width, bx.height, color, 1.0);
         }

@@ -76,7 +76,7 @@ pub fn run() {
             commands::project::project_open_path,
             commands::project::project_save,
             commands::project::project_close,
-            commands::pdf::pdf_pages_to_prerender,
+            commands::pdf::pdf_prerender_plan,
             commands::pdf::pdf_put_prerendered,
             commands::pdf::pdf_clear_prerendered,
             commands::pdf::pdf_generate,

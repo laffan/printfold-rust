@@ -18,7 +18,8 @@
 import Konva from 'konva';
 import { appState } from '../../../services/state';
 import type { TextFlowPageItem, PolygonPoint } from '../../../types';
-import { buildPolygonPath, defaultSmoothHandles } from '../../../services/textFlow/polygonPath';
+import { buildPolygonPath, defaultSmoothHandles } from '../../../services/text/polygonPath';
+import { onLongPress } from '../pointer';
 
 const HANDLE_RADIUS = 5;
 const HANDLE_FILL = '#ffffff';
@@ -131,6 +132,21 @@ export function addPolygonVertexHandles(
         appState.requestReflow();
         return;
       }
+    });
+
+    // Touch equivalents of the modifier clicks: double-tap toggles
+    // corner/smooth, press-and-hold removes the vertex.
+    anchor.on('dbltap', (e) => {
+      e.cancelBubble = true;
+      const next = toggleCornerType(livePoints, idx);
+      appState.updateItemOnPage(pageNumber, item.id, { polygonPoints: next });
+      appState.requestReflow();
+    });
+    onLongPress(anchor, () => {
+      if (livePoints.length <= MIN_VERTEX_COUNT) return;
+      const next = livePoints.filter((_, k) => k !== idx);
+      appState.updateItemOnPage(pageNumber, item.id, { polygonPoints: next });
+      appState.requestReflow();
     });
 
     anchor.on('dragmove', () => {

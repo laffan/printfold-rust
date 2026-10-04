@@ -15,6 +15,7 @@
  * - font-dropdown.css: Custom font dropdown
  * - fill-picker.css: Fill picker with color/gradient/pattern tabs
  * - utilities.css: Responsive, multi-select, context menu, scrollbars
+ * - platform.css: macOS title bar, iPadOS touch input and safe areas
  */
 
 @import './modules/base.css';
@@ -30,3 +31,4 @@
 @import './modules/font-dropdown.css';
 @import './modules/fill-picker.css';
 @import './modules/utilities.css';
+@import './modules/platform.css';

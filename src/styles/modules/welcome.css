@@ -134,22 +134,3 @@ body.welcome-active .app-header,
 body.welcome-active .app-main {
   visibility: hidden;
 }
-
-/* Banner shown when running on a browser without File System Access API.
-   Auto-save can't write back to disk silently, so we warn the user. */
-.no-fsa-banner {
-  position: fixed;
-  top: var(--header-height);
-  left: 0;
-  right: 0;
-  z-index: 50;
-  padding: 6px 16px;
-  background: var(--color-warning);
-  color: #1a1a1a;
-  font-size: 12px;
-  text-align: center;
-}
-
-.no-fsa-banner.hidden {
-  display: none;
-}

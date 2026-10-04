@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::{DialogExt, FileAccessMode, FilePath};
 
+
 use super::{err, header, raw_body, CmdResult};
 use crate::platform;
 use crate::state::AppState;
@@ -60,14 +61,15 @@ pub async fn pick_files(app: AppHandle, filters: Vec<Filter>, multiple: bool) ->
         let exts: Vec<&str> = f.extensions.iter().map(String::as_str).collect();
         dialog = dialog.add_filter(&f.name, &exts);
     }
-    let picked: Vec<FilePath> = if multiple {
-        dialog.blocking_pick_files().unwrap_or_default()
+    let picked: Vec<PathBuf> = if let Some(paths) = platform::e2e_picks() {
+        paths
+    } else if multiple {
+        dialog.blocking_pick_files().unwrap_or_default().into_iter().map(into_path).collect::<CmdResult<_>>()?
     } else {
-        dialog.blocking_pick_file().into_iter().collect()
+        dialog.blocking_pick_file().into_iter().map(into_path).collect::<CmdResult<_>>()?
     };
     let mut out = Vec::new();
-    for fp in picked {
-        let path = into_path(fp)?;
+    for path in picked {
         let bytes = std::fs::read(&path).map_err(err)?;
         let name = platform::file_name(&path);
         let ext = name.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_default();
@@ -106,6 +108,10 @@ pub async fn save_file(app: AppHandle, request: tauri::ipc::Request<'_>) -> CmdR
 
 pub(crate) fn save_bytes(app: &AppHandle, bytes: &[u8], name: &str, filter_name: &str, exts: &[String]) -> CmdResult<bool> {
     let ext_refs: Vec<&str> = exts.iter().map(String::as_str).collect();
+    if let Some(dir) = platform::e2e_dir() {
+        platform::atomic_write(&dir.join(sanitize_name(name)), bytes).map_err(err)?;
+        return Ok(true);
+    }
     if cfg!(target_os = "ios") {
         let dir = platform::documents_dir(app).ok_or("Documents folder unavailable")?;
         let target = dir.join(sanitize_name(name));

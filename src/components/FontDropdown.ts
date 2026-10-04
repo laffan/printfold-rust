@@ -12,7 +12,6 @@
  */
 
 import { fontService, FontDefinition, WEB_SAFE_FONTS, GOOGLE_FONTS } from '../services/fontService';
-import { env } from '../services/environment';
 
 export type FontDropdownMode = 'styles' | 'items';
 
@@ -98,7 +97,7 @@ export class FontDropdown {
     this.container.appendChild(this.dropdown);
 
     // Create warning container for missing variant messages (Electron styles mode only)
-    if (env.isElectron && this.mode === 'styles') {
+    if (this.mode === 'styles') {
       this.warningContainer = document.createElement('div');
       this.warningContainer.className = 'font-dropdown-warning';
       this.warningContainer.style.display = 'none';
@@ -146,7 +145,7 @@ export class FontDropdown {
     }
 
     // Listen for system fonts to load (Electron only)
-    if (env.isElectron && this.mode === 'styles') {
+    if (this.mode === 'styles') {
       this.unsubscribeSystemFonts = fontService.onSystemFontsLoaded(() => {
         this.buildDropdownContent();
         this.updateButtonDisplay();
@@ -165,7 +164,7 @@ export class FontDropdown {
 
   private shouldShowSearch(): boolean {
     // Show search for system fonts in Electron or for items mode
-    return env.isElectron || this.mode === 'items';
+    return true;
   }
 
   private getFonts(): FontDefinition[] {
@@ -253,7 +252,7 @@ export class FontDropdown {
 
     // Start variant checking separately (for Electron styles mode)
     // This is separate from font preview loading because system fonts don't need preview loading
-    if (env.isElectron && this.mode === 'styles') {
+    if (this.mode === 'styles') {
       this.startVariantChecking();
     }
   }
@@ -279,7 +278,7 @@ export class FontDropdown {
     }
 
     // For system fonts in Electron, add variant indicators
-    if (env.isElectron && this.mode === 'styles' && !isGoogleFont) {
+    if (this.mode === 'styles' && !isGoogleFont) {
       const indicatorContainer = document.createElement('span');
       indicatorContainer.className = 'font-variant-indicators';
       option.appendChild(indicatorContainer);
@@ -367,10 +366,8 @@ export class FontDropdown {
           // Check cache first
           let variantInfo = variantInfoCache.get(fontFamily);
 
-          if (!variantInfo && window.electronAPI?.getFontVariants) {
-            console.log(`[FontDropdown] Checking variants for: ${fontFamily}`);
-            variantInfo = await window.electronAPI.getFontVariants(fontFamily);
-            console.log(`[FontDropdown] Got variants for ${fontFamily}:`, variantInfo);
+          if (!variantInfo) {
+            variantInfo = await fontService.getFontVariants(fontFamily);
             if (variantInfo) {
               variantInfoCache.set(fontFamily, variantInfo);
             }
@@ -467,9 +464,9 @@ export class FontDropdown {
     // Check cache first
     let variantInfo = variantInfoCache.get(fontFamily);
 
-    if (!variantInfo && window.electronAPI?.getFontVariants) {
+    if (!variantInfo) {
       try {
-        variantInfo = await window.electronAPI.getFontVariants(fontFamily);
+        variantInfo = await fontService.getFontVariants(fontFamily);
         if (variantInfo) {
           variantInfoCache.set(fontFamily, variantInfo);
         }

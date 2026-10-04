@@ -5,7 +5,8 @@
 
 import Konva from 'konva';
 import { appState } from '../../services/state';
-import { applyTextTransform } from '../../services/textFlow';
+import { applyTextTransform } from '../../services/text/transform';
+import { PRESS, MOVE, RELEASE_OR_LEAVE } from './pointer';
 import type { PageContent, Margins, FontStyle } from '../../types';
 import { formatMarginValue } from '../../types';
 import type { MarginLine, MarginLabel } from './types';
@@ -355,7 +356,7 @@ function addHeaderFooterDragHandler(
     }
   });
 
-  line.on('mousedown', (e) => {
+  line.on(PRESS, (e) => {
     e.cancelBubble = true;
     isDraggingMarginRef.value = true;
 
@@ -396,8 +397,8 @@ function addHeaderFooterDragHandler(
     const upHandler = () => {
       isDraggingMarginRef.value = false;
       stage.container().style.cursor = 'default';
-      stage.off('mousemove', moveHandler);
-      stage.off('mouseup mouseleave', upHandler);
+      stage.off(MOVE, moveHandler);
+      stage.off(RELEASE_OR_LEAVE, upHandler);
 
       // Get fresh project state for the update
       const currentProject = appState.getProject();
@@ -414,8 +415,8 @@ function addHeaderFooterDragHandler(
       }
     };
 
-    stage.on('mousemove', moveHandler);
-    stage.on('mouseup mouseleave', upHandler);
+    stage.on(MOVE, moveHandler);
+    stage.on(RELEASE_OR_LEAVE, upHandler);
   });
 }
 
@@ -452,7 +453,7 @@ function addMarginDragHandler(
     }
   });
 
-  line.on('mousedown', (e) => {
+  line.on(PRESS, (e) => {
     e.cancelBubble = true;
     isDraggingMarginRef.value = true;
 
@@ -508,8 +509,8 @@ function addMarginDragHandler(
     const upHandler = (evt: Konva.KonvaEventObject<MouseEvent>) => {
       isDraggingMarginRef.value = false;
       stage.container().style.cursor = 'default';
-      stage.off('mousemove', moveHandler);
-      stage.off('mouseup mouseleave', upHandler);
+      stage.off(MOVE, moveHandler);
+      stage.off(RELEASE_OR_LEAVE, upHandler);
 
       // Get fresh project state for the update
       const currentProject = appState.getProject();
@@ -543,8 +544,8 @@ function addMarginDragHandler(
       }
     };
 
-    stage.on('mousemove', moveHandler);
-    stage.on('mouseup mouseleave', upHandler);
+    stage.on(MOVE, moveHandler);
+    stage.on(RELEASE_OR_LEAVE, upHandler);
   });
 
   marginLines.push({ line, type, pageNumber });

@@ -38,7 +38,9 @@ fn bind(state: &AppState, path: &Path) {
 #[tauri::command]
 pub async fn project_new(app: AppHandle, state: State<'_, AppState>, name: String) -> CmdResult<Option<ProjectLocation>> {
     let stem = name.trim_end_matches(".printfold").to_string();
-    let path: PathBuf = if cfg!(target_os = "ios") {
+    let path: PathBuf = if let Some(dir) = platform::e2e_dir() {
+        platform::unique_path(&dir, &stem, PROJECT_EXT)
+    } else if cfg!(target_os = "ios") {
         let dir = platform::documents_dir(&app).ok_or("Documents folder unavailable")?;
         platform::unique_path(&dir, &stem, PROJECT_EXT)
     } else {

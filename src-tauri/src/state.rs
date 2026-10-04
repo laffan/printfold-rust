@@ -115,6 +115,13 @@ impl Default for EngineHandle {
     }
 }
 
+/// Page images rendered by the editor for the next PDF.
+#[derive(Default)]
+pub struct Prerendered {
+    pub overlays: HashMap<u32, Vec<u8>>,
+    pub backgrounds: HashMap<u32, Vec<u8>>,
+}
+
 pub struct AppState {
     pub engine: EngineHandle,
     pub files: Mutex<FileStore>,
@@ -124,7 +131,7 @@ pub struct AppState {
     pub pending_opens: Mutex<Vec<PathBuf>>,
     pub webview_ready: Mutex<bool>,
     /// Pre-rendered page PNGs for the next PDF generation.
-    pub prerendered: Mutex<HashMap<u32, Vec<u8>>>,
+    pub prerendered: Mutex<Prerendered>,
 }
 
 impl AppState {
@@ -135,7 +142,7 @@ impl AppState {
             project_path: Mutex::new(None),
             pending_opens: Mutex::new(Vec::new()),
             webview_ready: Mutex::new(false),
-            prerendered: Mutex::new(HashMap::new()),
+            prerendered: Mutex::new(Prerendered::default()),
         }
     }
 }
