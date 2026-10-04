@@ -1,0 +1,32 @@
+/**
+ * Main Stylesheet
+ *
+ * This file imports all modular CSS files organized by component/feature:
+ *
+ * - base.css: CSS variables, reset, app layout
+ * - header.css: Application header styles
+ * - buttons.css: Button component styles
+ * - panels.css: Selected page and edit page panels
+ * - layout.css: Main layout, column resizers, columns
+ * - input-panel.css: Input column, file lists
+ * - editor.css: Spread editor, thumbnails, page states
+ * - options-panel.css: Options tabs, forms, sections
+ * - modal.css: Modal dialog styles
+ * - font-dropdown.css: Custom font dropdown
+ * - fill-picker.css: Fill picker with color/gradient/pattern tabs
+ * - utilities.css: Responsive, multi-select, context menu, scrollbars
+ */
+
+@import './modules/base.css';
+@import './modules/header.css';
+@import './modules/buttons.css';
+@import './modules/panels.css';
+@import './modules/layout.css';
+@import './modules/input-panel.css';
+@import './modules/editor.css';
+@import './modules/options-panel.css';
+@import './modules/modal.css';
+@import './modules/welcome.css';
+@import './modules/font-dropdown.css';
+@import './modules/fill-picker.css';
+@import './modules/utilities.css';

@@ -1,0 +1,76 @@
+/* Header */
+.app-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--header-height);
+  padding: 0 12px;
+  background: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
+  -webkit-app-region: drag;
+}
+
+.app-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-title .logo {
+  font-size: 16px;
+}
+
+.app-title h1 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* Hide app title in Electron (window title bar shows app name) */
+.is-electron .app-title .logo,
+.is-electron .app-title h1 {
+  display: none;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.header-actions .btn {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.project-name-display {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  max-width: 300px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.save-status {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  min-width: 64px;
+  text-align: right;
+}
+
+.save-status.saving {
+  color: var(--color-text-secondary);
+}
+
+.save-status.error {
+  color: var(--color-error);
+}
+

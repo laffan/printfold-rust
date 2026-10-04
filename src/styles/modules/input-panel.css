@@ -1,0 +1,336 @@
+/* Input Column */
+.column-input {
+  min-width: 280px;
+}
+
+.panel-files {
+  flex: 1;
+  min-height: 200px;
+  overflow: hidden;
+}
+
+.panel-files.expanded {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.panel-preview {
+  flex: 0 0 auto;
+  min-height: 100px;
+  max-height: 200px;
+}
+
+.panel-preview.collapsed {
+  display: none;
+}
+
+.panel-header-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-left: auto;
+}
+
+#btn-cursor-sync {
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+
+#btn-cursor-sync.active {
+  opacity: 1;
+}
+
+#btn-cursor-sync:hover {
+  opacity: 0.8;
+}
+
+.btn-edit-file {
+  font-size: 11px;
+}
+
+.file-list {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+  border: 2px dashed transparent;
+  transition: all 0.2s ease;
+}
+
+.file-list.dragover {
+  border-color: var(--color-primary);
+  background: rgba(74, 158, 255, 0.05);
+}
+
+.file-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.file-tab {
+  flex: 1;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.file-tab:hover {
+  color: var(--color-text);
+  background: var(--color-bg-hover);
+}
+
+.file-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.file-items-container {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.file-list-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  margin-bottom: 4px;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.file-item:hover {
+  background: var(--color-bg-hover);
+}
+
+.file-item.selected {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.file-item.main-document::before {
+  content: '★';
+  color: var(--color-warning);
+  font-size: 10px;
+}
+
+.file-item.selected.main-document::before {
+  color: #fff;
+}
+
+.file-item.dragging {
+  opacity: 0.5;
+}
+
+.file-item.drag-over {
+  border-top: 2px solid var(--color-primary);
+  margin-top: -2px;
+}
+
+/* Text file items: clean flat list style */
+.file-item-text {
+  margin-bottom: 0;
+  border-radius: 0;
+  background: transparent;
+  border-bottom: 1px solid var(--color-border);
+  width: 100%;
+  min-width: 0; /* Allow flex children to shrink below content size */
+}
+
+/* Always show delete button for text items */
+.file-item-text .file-actions {
+  opacity: 1;
+  flex-shrink: 0;
+}
+
+.file-item-text:hover {
+  background: var(--color-bg-hover);
+}
+
+.file-item-text.selected {
+  background: var(--color-primary);
+}
+
+/* Image file items with thumbnails */
+.file-items-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-content: flex-start;
+}
+
+/* Fonts tab uses a vertical list, not a wrapping grid. */
+.file-items-container.file-items-fonts {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 0;
+}
+
+.file-item-font .file-icon {
+  font-family: 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  width: 18px;
+  text-align: center;
+}
+
+.file-item-font .file-font-preview {
+  font-size: 14px;
+}
+
+.file-item-image {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 6px;
+  width: 100px;
+  position: relative;
+}
+
+.file-thumbnail {
+  width: 100%;
+  aspect-ratio: 1;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.file-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.file-item-image .file-name {
+  font-size: 10px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-item-image .file-actions {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  opacity: 0;
+}
+
+.file-item-image:hover .file-actions {
+  opacity: 1;
+}
+
+.drag-handle {
+  cursor: grab;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  padding: 2px 4px;
+  letter-spacing: -2px;
+  user-select: none;
+}
+
+.drag-handle:hover {
+  color: var(--color-text);
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.file-icon {
+  font-size: 16px;
+}
+
+.file-name {
+  flex: 1;
+  min-width: 0; /* Allow text to shrink and ellipsis to work */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.file-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.file-item:hover .file-actions {
+  opacity: 1;
+}
+
+.file-preview {
+  flex: 1;
+  overflow: hidden;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.preview-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.font-preview {
+  height: 100%;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  color: var(--color-text);
+  overflow: auto;
+}
+
+.font-preview-large {
+  font-size: 56px;
+  line-height: 1;
+}
+
+.font-preview-pangram {
+  font-size: 18px;
+}
+
+.font-preview-numbers {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  letter-spacing: 2px;
+}
+
+.filename {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PrintFold",
+  "version": "2.0.0",
+  "identifier": "com.printfold.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "PrintFold",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "category": "Productivity",
+    "shortDescription": "Signature-based booklets from markdown",
+    "longDescription": "PrintFold lays out markdown documents into printable, folded booklets with signatures, imposition, static pages and print-ready PDF export.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["printfold"],
+        "name": "PrintFold Project",
+        "description": "PrintFold Project",
+        "role": "Editor",
+        "rank": "Owner",
+        "mimeType": "application/x-printfold",
+        "exportedType": {
+          "identifier": "com.printfold.project",
+          "conformsTo": ["public.data", "public.zip-archive"]
+        }
+      }
+    ],
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    },
+    "iOS": {
+      "minimumSystemVersion": "15.0"
+    }
+  }
+}
