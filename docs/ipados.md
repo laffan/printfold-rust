@@ -44,10 +44,11 @@ the Files app as **On My iPad › PrintFold**.
 | Action | Mouse / trackpad | Touch | Keyboard |
 |--------|------------------|-------|----------|
 | New project ("Untitled", opened right away) | New Project | New Project | ⌘N |
-| Open | double-click | tap | Return |
-| Select | click; ⌘-click / Shift-click to extend | Select, then tap | arrows, ⌘A |
-| Rename | double-click the name, or menu › Rename | menu › Rename | – |
-| Duplicate, Share…, Delete | right-click menu or the selection toolbar | press and hold, or ⋯ on the card | ⌘D, ⌘⌫ |
+| Open | click | tap | Return |
+| Select | press and hold; then click to add/remove; ⌘/Shift-click | press and hold; then tap to add/remove | arrows, ⌘A |
+| Rename | menu › Rename, or the selection toolbar (edits the name in place) | same | – |
+| Duplicate, Share…, Delete | right-click menu, ⋯ on the card, or the selection toolbar | ⋯ on the card, or the selection toolbar | ⌘D, ⌘⌫ |
+| Leave selection | Done, Escape, or click empty space | Done, or tap empty space | Escape |
 | Import from Files / iCloud Drive | Import… | Import… | ⌘O |
 | Add a project from another app | drag `.printfold` files onto the browser | same | – |
 | Search by name | – | – | ⌘F |
@@ -72,7 +73,8 @@ the Files app as **On My iPad › PrintFold**.
 | **+** › From Clipboard (⌘⇧V) | Text becomes a markdown file, an image a PNG; iPadOS asks for permission to paste |
 | Drag onto the Files panel | From Files, Photos, Safari or any app that drags files |
 | Drag an image onto a static or blank page | Added to the project and placed on that page |
-| Image tool on the canvas | System photo/file picker |
+| Image tool on the canvas | Menu: File, Photo (photo library), From Clipboard |
+| Selected › Custom Background › Add Background | Same menu; the image becomes the page's background |
 
 Images in formats the PDF engine cannot embed (HEIC from Photos, TIFF,
 BMP, GIF) are converted to JPEG on the way in, using WebKit's decoder.

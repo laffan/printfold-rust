@@ -9,7 +9,7 @@
 }
 
 .tab {
-  padding: 4px 12px;
+  padding: 3px 12px;
   font-size: 12px;
   font-weight: 500;
   color: var(--color-text-secondary);
@@ -53,8 +53,10 @@
 .editor-toolbar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 8px 12px;
+  gap: 12px;
+  flex-shrink: 0;
+  height: var(--bar-height);
+  padding: 0 8px;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -302,7 +304,9 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 8px;
+  flex-shrink: 0;
+  height: var(--bar-height);
+  padding: 0 8px;
   border-top: 1px solid var(--color-border);
 }
 
@@ -311,12 +315,94 @@
   color: var(--color-text-secondary);
 }
 
-.pdf-preview-container {
+/* PDF preview: page thumbnails beside a scrolling column of pages */
+.pdf-preview {
   flex: 1;
-  overflow: hidden;
+  display: flex;
+  min-height: 0;
+}
+
+.pdf-thumbnails {
+  flex: 0 0 112px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-right: 1px solid var(--color-border);
+  -webkit-overflow-scrolling: touch;
+}
+
+.pdf-thumbnails:empty {
+  display: none;
+}
+
+.pdf-thumb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.pdf-thumb-page {
+  width: 88px;
+  background: var(--color-page);
+  box-shadow: var(--shadow-sm);
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+}
+
+.pdf-thumb-page canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pdf-thumb.current {
+  color: var(--color-text);
+}
+
+.pdf-thumb.current .pdf-thumb-page {
+  outline-color: var(--color-primary);
+}
+
+.pdf-preview-container {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
   display: flex;
   flex-direction: column;
   background: var(--color-bg);
+  -webkit-overflow-scrolling: touch;
+}
+
+.pdf-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+}
+
+.pdf-page {
+  flex-shrink: 0;
+  background: var(--color-page);
+  box-shadow: var(--shadow-md);
+}
+
+.pdf-page canvas {
+  display: block;
 }
 
 .pdf-preview-container iframe {

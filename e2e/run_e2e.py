@@ -169,12 +169,54 @@ def main():
         run.js("[...document.querySelectorAll('.file-tab')].find(t => t.textContent.startsWith('Text')).click()")
         log("from clipboard: Clipboard Chapter.md, Clipboard image.png")
 
+        # The markdown editor opens at half the column's height.
+        run.js("document.querySelector('.file-item .btn-edit-file').click()")
+        run.wait(lambda: run.js("return !document.querySelector('.panel-preview').classList.contains('collapsed')"), what="editor panel")
+        time.sleep(0.5)
+        ratio = run.js("""
+            const files = document.querySelector('.panel-files').getBoundingClientRect().height;
+            const editor = document.querySelector('.panel-preview').getBoundingClientRect().height;
+            return editor / (files + editor);
+        """)
+        assert 0.4 < ratio < 0.6, f"editor takes {ratio:.2f} of the column"
+        log(f"markdown editor opens at {ratio:.0%} of the column")
+        run.click("#btn-close-preview")
+
         # Wait for reflow: more than the default 4 pages laid out with text
         run.wait(lambda: int(run.text("#info-pages") or 0) >= 8, timeout=60, what="reflow")
         pages = int(run.text("#info-pages"))
         log(f"pages after reflow: {pages}")
         time.sleep(1.5)
         run.shot("02-editor")
+
+        # Dragging a margin guide moves the facing page's guide too (live).
+        run.js("const c = document.getElementById('chk-show-margins'); if (c && !c.checked) c.click();")
+        run.click("#btn-next-spread")
+        time.sleep(1)
+        def top_guides():
+            return run.js("""
+                const lines = Konva.stages[0].find(n => n.getClassName() === 'Line' && n.hitStrokeWidth() === 20)
+                  .map(n => { const p = n.points(); const t = n.getAbsoluteTransform().point({x: p[0], y: p[1]});
+                              const e = n.getAbsoluteTransform().point({x: p[2], y: p[3]}); return [t.x, t.y, e.x, e.y]; })
+                  .filter(p => Math.abs(p[1] - p[3]) < 0.5);
+                const top = Math.min(...lines.map(p => p[1]));
+                return lines.filter(p => Math.abs(p[1] - top) < 1).sort((a, b) => a[0] - b[0]);
+            """)
+        guides = top_guides()
+        assert len(guides) == 2, f"expected a top guide on both pages, got {guides}"
+        rx, ry = (guides[1][0] + guides[1][2]) / 2, guides[1][1]
+        cw, ch = run.js("const s = Konva.stages[0]; return [s.width(), s.height()]")
+        actions = ActionChains(run.driver)
+        actions.move_to_element_with_offset(container_el := run.driver.find_element(By.CSS_SELECTOR, "#konva-container"),
+                                            int(rx - cw / 2), int(ry - ch / 2)).click_and_hold().move_by_offset(0, 12).move_by_offset(0, 12).perform()
+        time.sleep(0.3)
+        during = top_guides() or []
+        ActionChains(run.driver).release().perform()
+        moved = [round(d[1] - g[1]) for d, g in zip(sorted(during, key=lambda p: p[0]), guides)] if len(during) == 2 else []
+        log(f"margin drag: guide moves during drag {moved}")
+        assert len(moved) == 2 and moved[0] > 10 and moved[1] > 10, f"facing guide did not follow the drag: {moved}"
+        time.sleep(1)
+        run.click("#btn-prev-spread")
 
         # Change a layout option (pages per signature) and check it reflows
         run.js("""
@@ -190,6 +232,18 @@ def main():
         run.wait(lambda: run.js("return document.querySelectorAll('.pdf-page canvas').length") >= 1,
                  timeout=90, what="pdf preview")
         time.sleep(1)
+        # Thumbnails beside the pages; the page column scrolls, and a
+        # thumbnail click jumps to its page.
+        thumbs = run.js("return document.querySelectorAll('.pdf-thumb').length")
+        pages_in_preview = run.js("return document.querySelectorAll('.pdf-page').length")
+        assert thumbs == pages_in_preview and thumbs >= 2, (thumbs, pages_in_preview)
+        scrollable = run.js("const c = document.getElementById('pdf-preview-container'); return c.scrollHeight > c.clientHeight")
+        assert scrollable, "preview pages do not scroll"
+        run.js(f"document.querySelectorAll('.pdf-thumb')[{thumbs - 1}].click()")
+        run.wait(lambda: run.js("return document.getElementById('pdf-preview-container').scrollTop") > 0, what="thumbnail navigation")
+        run.wait(lambda: run.js("return document.querySelector('.pdf-thumb.current')?.dataset.page") == str(thumbs), what="current thumbnail")
+        log(f"preview: {thumbs} pages with thumbnails, scrolls")
+        time.sleep(0.6)
         run.shot("03-preview")
         run.click('.tab[data-tab="editor"]')
 
@@ -280,6 +334,17 @@ def main():
         else:
             log("download-current button not visible (page not static?)")
 
+        # Add Background › From Clipboard sets the page's custom background.
+        set_clipboard((FIXTURES / "picture.png").read_bytes(), "image/png")
+        run.js("document.querySelector('.options-tabs .tab-btn[data-tab=\"selected\"]').click()")
+        run.wait(lambda: run.visible("#btn-upload-background"), what="Add Background button")
+        assert run.text("#btn-upload-background") == "Add Background"
+        run.click("#btn-upload-background")
+        run.menu("From Clipboard")
+        run.wait(lambda: run.js("const b = document.getElementById('btn-remove-background'); return !!b && b.style.display !== 'none'"),
+                 what="background from clipboard")
+        log("Add Background › From Clipboard")
+
         # Re-export: the static page's items arrive as a pre-rendered image
         pdf_path.unlink()
         run.click("#btn-export")
@@ -331,8 +396,12 @@ def main():
                 return c ? '.project-card[data-path="' + CSS.escape(c.dataset.path) + '"]' : null;
             """, name)
 
-        # Select + Duplicate from the selection toolbar
-        run.click(card_selector("Field Guide") + " .card-thumb")
+        def long_press(selector):
+            el = run.driver.find_element(By.CSS_SELECTOR, selector)
+            ActionChains(run.driver).click_and_hold(el).pause(0.8).release().perform()
+
+        # Long press selects; Duplicate from the selection toolbar
+        long_press(card_selector("Field Guide") + " .card-thumb")
         run.wait(lambda: run.js("return document.getElementById('browser-toolbar').classList.contains('active')"),
                  what="selection toolbar")
         time.sleep(0.4)  # toolbar slides open
@@ -340,9 +409,11 @@ def main():
         run.wait(lambda: "Field Guide copy" in cards(), what="duplicate")
         assert (workdir / "Field Guide copy.printfold").exists()
 
-        # Inline rename (double-click the name)
-        ActionChains(run.driver).double_click(
-            run.driver.find_element(By.CSS_SELECTOR, card_selector("Field Guide copy") + " .card-name")).perform()
+        # Inline rename from the selection toolbar (select only the copy)
+        run.click('[data-browser-action="done"]')
+        long_press(card_selector("Field Guide copy") + " .card-thumb")
+        time.sleep(0.4)
+        run.click('[data-browser-action="rename"]')
         run.wait(lambda: run.js("return !!document.querySelector('.card-rename')"), what="inline rename field")
         run.js("""
             const i = document.querySelector('.card-rename'); i.value = 'Draft Two';
@@ -352,7 +423,8 @@ def main():
         run.wait(lambda: "Draft Two" in cards(), what="renamed card")
 
         # Delete with the keyboard (confirmation dialog)
-        run.click(card_selector("Draft Two") + " .card-thumb")
+        run.js("document.querySelector('[data-browser-action=\"done\"]').click()")
+        long_press(card_selector("Draft Two") + " .card-thumb")
         run.js("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Backspace', bubbles: true}))")
         run.wait(lambda: run.visible("#modal-confirm"), what="delete confirmation")
         run.click("#modal-confirm")
@@ -375,9 +447,9 @@ def main():
         run.wait(lambda: "Dropped" in cards(), what="dropped card")
         log(f"browser operations ok: {sorted(cards())}")
 
-        # Open by double-clicking the card
-        ActionChains(run.driver).double_click(
-            run.driver.find_element(By.CSS_SELECTOR, card_selector("Field Guide") + " .card-thumb")).perform()
+        # A single click opens
+        run.js("document.querySelector('[data-browser-action=\"done\"]').click()")
+        run.click(card_selector("Field Guide") + " .card-thumb")
         run.wait(lambda: not run.visible("#welcome-screen"), what="reopened editor")
         run.wait(lambda: int(run.text("#info-pages") or 0) >= 8, timeout=60, what="reflow after reopen")
         log(f"pages after reopen: {run.text('#info-pages')}")

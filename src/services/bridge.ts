@@ -213,8 +213,9 @@ export const bridge = {
 
   // ---------------------------------------------------------------- dialogs
 
-  pickFiles(filters: FileFilter[], multiple: boolean): Promise<PickedFile[]> {
-    return invoke<PickedFile[]>('pick_files', { filters, multiple });
+  /** `picker: 'photo'` opens the photo library (iPadOS) / Pictures folder. */
+  pickFiles(filters: FileFilter[], multiple: boolean, picker?: 'photo' | 'document'): Promise<PickedFile[]> {
+    return invoke<PickedFile[]>('pick_files', { filters, multiple, picker: picker ?? null });
   },
 
   clipboardRead(): Promise<ClipboardContent> {

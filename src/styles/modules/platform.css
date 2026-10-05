@@ -58,21 +58,18 @@
   min-width: 0;
 }
 
-@media (hover: none) {
-  /* Hover-revealed actions are always shown. */
+/* Touch-only devices (no mouse or trackpad attached): hover-revealed
+   actions are always shown and hit targets grow to finger size. With a
+   pointer attached (iPad with a mouse), the desktop sizes apply. */
+@media (any-hover: none) {
   .file-item .file-actions,
   .file-item-image .file-actions {
     opacity: 1;
   }
 
-  /* Resizer handles: visible and wider for fingers. */
+  /* Wider grab areas for resizers; the line still shows only while dragging. */
   .column-resizer {
     width: 14px;
-  }
-
-  .column-resizer::after,
-  .panel-resizer::after {
-    opacity: 1;
   }
 
   .panel-resizer {
@@ -87,7 +84,6 @@
     top: 6px;
   }
 
-  /* Finger-sized buttons. */
   .btn-icon {
     min-width: 32px;
     min-height: 32px;
@@ -95,16 +91,6 @@
 
   .btn-small {
     min-height: 30px;
-  }
-
-  .tab,
-  .tab-btn {
-    min-height: 34px;
-  }
-
-  .recent-remove {
-    width: 32px;
-    height: 32px;
   }
 
   .context-menu > div {

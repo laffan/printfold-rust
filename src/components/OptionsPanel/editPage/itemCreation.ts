@@ -2,6 +2,7 @@
  * Item creation functions for the Edit Page module
  */
 
+import { uniqueName } from '../../../services/clipboardImport';
 import { appState } from '../../../services/state';
 import { switchToSelectedTab } from './shared';
 import type { PageItem, TextPageItem, ShapePageItem, ImagePageItem, TextFlowPageItem, ProjectFile } from '../../../types';
@@ -87,28 +88,14 @@ export function addItemToCurrentPage(
 /**
  * Add an image file to the currently selected static page
  */
-export async function addImageToCurrentPage(file: File): Promise<void> {
+export async function addImageToCurrentPage(file: ProjectFile): Promise<void> {
   const editorState = appState.getEditor();
   if (editorState.selectedPageNumber === null) return;
 
-  // Read file as base64
-  const content = await new Promise<string>((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(',')[1];
-      resolve(base64);
-    };
-    reader.readAsDataURL(file);
-  });
-
-  // Add file to project files
+  // Add file to project files (never replacing a file of the same name)
   const projectFile: ProjectFile = {
-    id: crypto.randomUUID(),
-    name: file.name,
-    type: 'image',
-    content,
-    isBase64: true,
-    lastModified: file.lastModified,
+    ...file,
+    name: uniqueName(file.name, appState.getProject().files.map(f => f.name)),
   };
   appState.addFiles([projectFile]);
 

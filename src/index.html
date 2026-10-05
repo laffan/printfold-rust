@@ -16,7 +16,6 @@
       <h1 data-tauri-drag-region>Projects</h1>
       <input id="browser-search" class="browser-search" type="search" placeholder="Search" aria-label="Search projects" autocomplete="off" />
       <div class="browser-header-actions">
-        <button id="browser-select" class="btn btn-secondary browser-select-btn">Select</button>
         <button id="browser-import" class="btn btn-secondary">Open…</button>
         <button id="browser-new" class="btn btn-primary">New Project</button>
       </div>
@@ -29,6 +28,7 @@
       <button class="btn btn-secondary" data-browser-action="share">Share…</button>
       <button class="btn btn-secondary" data-browser-action="reveal">Show in Finder</button>
       <button class="btn btn-danger" data-browser-action="delete">Delete</button>
+      <button class="btn btn-secondary" data-browser-action="done">Done</button>
     </div>
     <div id="browser-grid" class="browser-grid" role="listbox" aria-multiselectable="true" tabindex="0"></div>
     <p id="browser-empty" class="browser-empty" hidden></p>
@@ -42,14 +42,13 @@
   <div id="app">
     <!-- Header -->
     <header class="app-header" data-tauri-drag-region>
-      <div class="app-title" data-tauri-drag-region>
-        <span class="logo">📖</span>
-        <h1>PrintFold</h1>
-      </div>
+      <button id="btn-welcome" class="header-back" title="Back to all projects (⌘⇧O)">
+        <svg width="10" height="16" viewBox="0 0 10 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2L2 8l6 6"/></svg>
+        <span>Projects</span>
+      </button>
       <button id="project-name-display" class="project-name-display" title="Rename project"></button>
       <div class="header-actions">
         <span id="save-status" class="save-status" aria-live="polite"></span>
-        <button id="btn-welcome" class="btn btn-secondary" title="Back to all projects (⌘⇧O)">Projects</button>
         <button id="btn-export" class="btn btn-primary">Export PDF</button>
       </div>
     </header>
@@ -178,8 +177,11 @@
 
           <!-- Preview Tab -->
           <div id="tab-preview" class="tab-panel" role="tabpanel">
-            <div id="pdf-preview-container" class="pdf-preview-container">
-              <div class="preview-placeholder">PDF preview will appear here</div>
+            <div class="pdf-preview">
+              <nav id="pdf-thumbnails" class="pdf-thumbnails" aria-label="PDF pages"></nav>
+              <div id="pdf-preview-container" class="pdf-preview-container">
+                <div class="preview-placeholder">PDF preview will appear here</div>
+              </div>
             </div>
           </div>
 
@@ -504,7 +506,7 @@
               <!-- Upload/Remove buttons -->
               <div class="form-group">
                 <div class="button-group-vertical">
-                  <button id="btn-upload-background" class="btn btn-secondary btn-small">Upload Background</button>
+                  <button id="btn-upload-background" class="btn btn-secondary btn-small" aria-haspopup="menu">Add Background</button>
                   <button id="btn-remove-background" class="btn btn-secondary btn-small" style="display: none;">Remove Background</button>
                 </div>
               </div>

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use base64::Engine as _;
 use printfold_core::project_file::file_type_for_extension;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::{DialogExt, FileAccessMode, FilePath};
 
 
@@ -74,8 +74,17 @@ pub(crate) fn into_path(fp: FilePath) -> CmdResult<PathBuf> {
 /// Show an open dialog and read the chosen files (markdown as text,
 /// everything else base64).
 #[tauri::command]
-pub async fn pick_files(app: AppHandle, filters: Vec<Filter>, multiple: bool) -> CmdResult<Vec<PickedFile>> {
+///
+/// `picker`: `"photo"` opens the photo library on iPadOS (the Pictures
+/// folder elsewhere); anything else the document picker / open panel.
+pub async fn pick_files(app: AppHandle, filters: Vec<Filter>, multiple: bool, picker: Option<String>) -> CmdResult<Vec<PickedFile>> {
     let mut dialog = app.dialog().file().set_file_access_mode(FileAccessMode::Copy);
+    if picker.as_deref() == Some("photo") {
+        dialog = dialog.set_picker_mode(tauri_plugin_dialog::PickerMode::Image);
+        if let Ok(pictures) = app.path().picture_dir() {
+            dialog = dialog.set_directory(pictures);
+        }
+    }
     for f in &filters {
         let exts: Vec<&str> = f.extensions.iter().map(String::as_str).collect();
         dialog = dialog.add_filter(&f.name, &exts);

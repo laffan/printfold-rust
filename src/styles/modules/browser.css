@@ -68,17 +68,6 @@ body.welcome-active .app-main {
   font-size: 13px;
 }
 
-/* "Select" is for touch screens; with a pointer, ⌘/Shift-click select. */
-.browser-select-btn {
-  display: none;
-}
-
-@media (hover: none) {
-  .browser-select-btn {
-    display: inline-flex;
-  }
-}
-
 /* Selection toolbar */
 .browser-toolbar {
   display: flex;
@@ -127,12 +116,12 @@ body.welcome-active .app-main {
 }
 
 .project-card {
+  cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 8px;
   border-radius: var(--radius-lg);
-  cursor: default;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
@@ -203,7 +192,7 @@ body.welcome-active .app-main {
   opacity: 1;
 }
 
-@media (hover: none) {
+@media (any-hover: none) {
   .card-more {
     opacity: 1;
   }
@@ -242,11 +231,6 @@ body.welcome-active .app-main {
 
 .card-location {
   color: var(--color-text-secondary);
-}
-
-/* Touch "Select" mode: tapping toggles selection. */
-.project-browser.select-mode .project-card {
-  cursor: pointer;
 }
 
 .browser-empty {

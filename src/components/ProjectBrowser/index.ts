@@ -3,10 +3,11 @@
  * of cover thumbnails and works as a small file manager — create, open,
  * select, rename, duplicate, delete, share and import projects.
  *
- * Mouse/trackpad: click selects (⌘/Shift extend), double-click opens,
- * right-click for actions. Touch: tap opens, press and hold for actions,
- * "Select" for multi-selection. Keyboard: arrows, Return opens,
- * ⌘⌫ deletes, ⌘A selects all, ⌘N new, ⌘O open/import.
+ * Click or tap opens a project. Press and hold (mouse or finger) selects;
+ * while anything is selected, clicks toggle selection (⌘/Shift-click also
+ * extend it). Actions: right-click, the ⋯ button, or the selection
+ * toolbar. Keyboard: arrows, Return opens, ⌘⌫ deletes, ⌘A selects all,
+ * ⌘N new, ⌘O open/import.
  */
 
 import { bridge, type LibraryEntry, type LibraryInfo } from '../../services/bridge';
@@ -40,8 +41,6 @@ export class ProjectBrowser {
   private selected = new Set<string>();
   private anchor: string | null = null;
   private filter = '';
-  private selectMode = false;
-  private lastPointerType = 'mouse';
   private busy = false;
 
   mount(handlers: BrowserHandlers): void {
@@ -54,7 +53,6 @@ export class ProjectBrowser {
     importBtn.title = env.isMobile ? 'Copy projects from Files into PrintFold' : 'Open a project from any folder';
     importBtn.addEventListener('click', () => void this.importOrOpen());
     this.root.querySelector('#browser-new')!.addEventListener('click', () => void this.run(() => this.handlers.create()));
-    this.root.querySelector('#browser-select')!.addEventListener('click', () => this.toggleSelectMode());
     this.root.querySelector('#browser-reveal')!.addEventListener('click', () => void bridge.libraryReveal());
     const search = this.root.querySelector<HTMLInputElement>('#browser-search')!;
     search.addEventListener('input', () => {
@@ -121,8 +119,6 @@ export class ProjectBrowser {
     const location = this.root.querySelector('#browser-location');
     if (location && this.info) location.textContent = this.info.display;
     this.root.querySelector<HTMLElement>('#browser-reveal')!.hidden = !this.info?.canReveal;
-    this.root.classList.toggle('select-mode', this.selectMode);
-    this.root.querySelector('#browser-select')!.textContent = this.selectMode ? 'Done' : 'Select';
     this.updateToolbar();
   }
 
@@ -170,7 +166,7 @@ export class ProjectBrowser {
   }
 
   private clickSelect(path: string, e: MouseEvent): void {
-    const toggle = e.metaKey || e.ctrlKey || this.selectMode;
+    const toggle = e.metaKey || e.ctrlKey || (!e.shiftKey && this.selected.size > 0);
     if (e.shiftKey && this.anchor) {
       const order = this.visibleEntries().map(x => x.path);
       const [a, b] = [order.indexOf(this.anchor), order.indexOf(path)].sort((x, y) => x - y);
@@ -189,12 +185,6 @@ export class ProjectBrowser {
     }
   }
 
-  private toggleSelectMode(): void {
-    this.selectMode = !this.selectMode;
-    if (!this.selectMode) this.setSelection([]);
-    this.render();
-  }
-
   // --------------------------------------------------------------- events
 
   private setupGridEvents(): void {
@@ -206,17 +196,21 @@ export class ProjectBrowser {
       pressTimer = null;
     };
 
+    // Press and hold (mouse, trackpad or finger) selects a card.
     this.grid.addEventListener('pointerdown', (e) => {
-      this.lastPointerType = e.pointerType;
       pressFired = false;
-      const card = (e.target as HTMLElement).closest<HTMLElement>('.project-card');
-      if (!card || e.pointerType !== 'touch') return;
+      const target = e.target as HTMLElement;
+      const card = target.closest<HTMLElement>('.project-card');
+      if (!card || e.button !== 0 || target.closest('.card-more, .card-rename')) return;
       pressStart = { x: e.clientX, y: e.clientY };
       cancelPress();
       pressTimer = window.setTimeout(() => {
         pressTimer = null;
         pressFired = true;
-        this.openMenu(card.dataset.path!, pressStart.x, pressStart.y);
+        const path = card.dataset.path!;
+        const next = new Set(this.selected);
+        next.add(path);
+        this.setSelection(Array.from(next), path);
       }, LONG_PRESS_MS);
     });
     this.grid.addEventListener('pointermove', (e) => {
@@ -225,15 +219,17 @@ export class ProjectBrowser {
     this.grid.addEventListener('pointerup', cancelPress);
     this.grid.addEventListener('pointercancel', cancelPress);
 
+    // A click opens; while something is selected, clicks toggle selection.
     this.grid.addEventListener('click', (e) => {
       if (pressFired) {
         pressFired = false;
         return;
       }
       const target = e.target as HTMLElement;
+      if (target.closest('.card-rename')) return;
       const card = target.closest<HTMLElement>('.project-card');
       if (!card) {
-        if (!this.selectMode && !e.metaKey && !e.shiftKey) this.setSelection([]);
+        if (!e.metaKey && !e.ctrlKey && !e.shiftKey) this.setSelection([]);
         return;
       }
       const path = card.dataset.path!;
@@ -242,28 +238,19 @@ export class ProjectBrowser {
         this.openMenu(path, r.left + r.width / 2, r.bottom);
         return;
       }
-      if (this.lastPointerType === 'touch' && !this.selectMode) {
-        void this.openProject(path);
+      if (e.metaKey || e.ctrlKey || e.shiftKey || this.selected.size > 0) {
+        this.clickSelect(path, e);
         return;
       }
-      this.clickSelect(path, e);
-    });
-
-    this.grid.addEventListener('dblclick', (e) => {
-      const target = e.target as HTMLElement;
-      const card = target.closest<HTMLElement>('.project-card');
-      if (!card || this.selectMode || target.closest('.card-more')) return;
-      if (target.closest('.card-name')) {
-        void this.renameInline(card.dataset.path!);
-      } else {
-        void this.openProject(card.dataset.path!);
-      }
+      void this.openProject(path);
     });
 
     this.grid.addEventListener('contextmenu', (e) => {
       const card = (e.target as HTMLElement).closest<HTMLElement>('.project-card');
       if (!card) return;
       e.preventDefault();
+      // Long presses on touch screens select instead of opening a menu.
+      if (pressFired) return;
       this.openMenu(card.dataset.path!, e.clientX, e.clientY);
     });
   }
@@ -395,6 +382,7 @@ export class ProjectBrowser {
       case 'share': if (first) void this.share(first, e); break;
       case 'reveal': if (first) void this.run(() => bridge.libraryReveal(first)); break;
       case 'delete': void this.delete(selected); break;
+      case 'done': this.setSelection([]); break;
     }
   }
 

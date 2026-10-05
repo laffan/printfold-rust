@@ -10,6 +10,7 @@
 .options-tabs {
   display: flex;
   gap: 0;
+  height: var(--bar-height);
   background: var(--color-bg-secondary);
   border-radius: var(--radius-md) var(--radius-md) 0 0;
   border-bottom: 1px solid var(--color-border);
@@ -18,7 +19,7 @@
 
 .tab-btn {
   flex: 1;
-  padding: 10px 6px;
+  padding: 0 6px;
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;

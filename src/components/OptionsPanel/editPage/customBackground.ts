@@ -6,6 +6,10 @@
 import { appState } from '../../../services/state';
 import { downloadBlankPage, downloadPageAsPng, getPageDimensions } from '../../../services/pageExport';
 import { showApplyRangeModal } from './applyRangeModal';
+import { showContextMenu } from '../../SpreadEditor/selection';
+import { IMAGE_SOURCES, pickImage } from '../../../services/imageSource';
+import { uniqueName } from '../../../services/clipboardImport';
+import type { ProjectFile } from '../../../types';
 
 /**
  * Set up custom background section event handlers
@@ -24,24 +28,23 @@ export function setupCustomBackgroundHandlers(): void {
     }
   });
 
-  // Upload Background button
-  document.getElementById('btn-upload-background')?.addEventListener('click', () => {
+  // Add Background: File / Photo / From Clipboard
+  const addBtn = document.getElementById('btn-upload-background');
+  addBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
     const editorState = appState.getEditor();
     if (editorState.selectedPageNumber === null) return;
-
-    // Capture the page number now, in case selection changes while file picker is open
+    // Capture the page now, in case the selection changes while picking.
     const pageNumber = editorState.selectedPageNumber;
-
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/png,image/jpeg,image/webp,image/gif';
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        await uploadBackground(pageNumber, file);
-      }
-    };
-    input.click();
+    const r = addBtn.getBoundingClientRect();
+    showContextMenu(r.left, r.bottom + 4, IMAGE_SOURCES.map(({ source, label }) => ({
+      label,
+      action: () => {
+        void pickImage(source).then(file => {
+          if (file) addBackground(pageNumber, file);
+        });
+      },
+    })));
   });
 
   // Remove Background button
@@ -54,35 +57,12 @@ export function setupCustomBackgroundHandlers(): void {
   });
 }
 
-/**
- * Upload a background image for a page
- */
-async function uploadBackground(pageNumber: number, file: File): Promise<void> {
-  // Read file as base64
-  const content = await new Promise<string>((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(',')[1];
-      resolve(base64);
-    };
-    reader.readAsDataURL(file);
-  });
-
-  // Add file to project
-  const projectFile = {
-    id: crypto.randomUUID(),
-    name: `bg-${file.name}`,
-    type: 'image' as const,
-    content,
-    isBase64: true,
-    lastModified: file.lastModified,
-  };
+/** Add an image to the project and make it the page's custom background. */
+function addBackground(pageNumber: number, file: ProjectFile): void {
+  const taken = appState.getProject().files.map(f => f.name);
+  const projectFile = { ...file, name: uniqueName(`bg-${file.name}`, taken) };
   appState.addFiles([projectFile]);
-
-  // Set as custom background for this page
   appState.setCustomBackground(pageNumber, projectFile.id);
-
-  // Update the UI
   updateCustomBackgroundSection();
 }
 

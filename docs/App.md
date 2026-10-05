@@ -43,9 +43,9 @@ thumbnails (`card.ts`) and works as a file manager:
 | Operation | How | Rust |
 |-----------|-----|------|
 | New | New Project, ⌘N | `library_create` |
-| Open | double-click / tap / Return | `project_open_path` |
-| Select | click, ⌘/Shift-click, arrows, ⌘A; "Select" mode on touch screens | – |
-| Rename | double-click the name (inline), menu, toolbar | `library_rename` |
+| Open | click / tap / Return | `project_open_path` |
+| Select | press and hold (mouse or touch), then clicks toggle; ⌘/Shift-click, arrows, ⌘A; Done/Escape ends | – |
+| Rename | menu or toolbar (inline edit of the name) | `library_rename` |
 | Duplicate | menu, toolbar, ⌘D | `library_duplicate` |
 | Share | menu, toolbar | `library_share` (share sheet / sharing picker) |
 | Delete | menu, toolbar, ⌘⌫ / Delete (confirmed) | `library_delete` (Trash on macOS) |
@@ -54,7 +54,26 @@ thumbnails (`card.ts`) and works as a file manager:
 | Add dropped `.printfold` files | drag onto the browser | `library_import_bytes` |
 | Search | ⌘F | – |
 
-Menus: right-click, press and hold (touch), or the ⋯ button on a card.
+Menus: right-click or the ⋯ button on a card.
+
+## Editor layout
+
+- Header: **‹ Projects** on the left, 📖 and the project name (click to
+  rename) in the centre, save status and Export PDF on the right; no
+  separate header surface.
+- Every bar (header, Editor/Preview, editor toolbar, spread navigation,
+  file tabs, options tabs, panel headers) is `--bar-height` (36 px).
+- Column and panel resizers show their line only on hover or while
+  dragging; touch-only devices get wider grab areas.
+- The Files list and the markdown editor share the left column evenly
+  until the resizer between them is dragged.
+
+## PDF preview (`components/PDFPreview.ts`)
+
+pdf.js renders the generated PDF into a scrolling column of pages
+(lazily, as they come into view), with a thumbnail strip beside it:
+clicking a thumbnail scrolls to that page, and the page at the top of the
+view is highlighted as you scroll.
 
 ## Project session (`components/projectSession.ts`)
 

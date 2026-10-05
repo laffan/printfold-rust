@@ -398,6 +398,13 @@ export class App {
         previewPanel.classList.add('collapsed');
         filesPanel?.classList.add('expanded');
         if (previewResizer) previewResizer.style.display = 'none';
+        // Drop sizes set by dragging the resizer: the Files list fills the
+        // column again, and the editor reopens at half height.
+        for (const panel of [previewPanel, filesPanel as HTMLElement | null]) {
+          panel?.style.removeProperty('flex');
+          panel?.style.removeProperty('min-height');
+          panel?.style.removeProperty('max-height');
+        }
         this.filePreview.showFile(null);
       });
     }

@@ -6,37 +6,37 @@
   justify-content: space-between;
   height: var(--header-height);
   padding: 0 12px;
-  background: var(--color-bg-secondary);
-  border-bottom: 1px solid var(--color-border);
+  /* Same surface as the window: no separate header bar. */
+  background: var(--color-bg);
   -webkit-app-region: drag;
+  flex-shrink: 0;
 }
 
-.app-title {
-  display: flex;
+/* "‹ Projects": back to the project browser. */
+.header-back {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-}
-
-.app-title .logo {
-  font-size: 16px;
-}
-
-.app-title h1 {
+  gap: 6px;
+  padding: 4px 8px 4px 4px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
   font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.header-back:hover {
+  background: var(--color-bg-hover);
 }
 
 /* macOS: the window uses an overlay title bar, so the traffic-light
-   buttons sit inside the header; leave room for them and hide the app
-   title (the window shows the project name). */
+   buttons sit inside the header; leave room for them. */
 [data-platform="macos"] .app-header {
   padding-left: 80px;
-}
-
-[data-platform="macos"] .app-title .logo,
-[data-platform="macos"] .app-title h1 {
-  display: none;
 }
 
 .header-actions {
@@ -75,6 +75,11 @@
 .project-name-display:hover {
   color: var(--color-text);
   background: var(--color-bg-hover);
+}
+
+.project-name-display::before {
+  content: '📖';
+  margin-right: 6px;
 }
 
 .project-name-display:empty {

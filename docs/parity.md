@@ -78,8 +78,8 @@ difference (see notes).
 | Option-drag duplicate, copy/paste, duplicate, delete, z-order | = | Context menu also offers Paste (needed on iPad without a keyboard) |
 | Fill (colour, linear, radial, pattern) with offset; stroke with offset; shadow; array | = | |
 | Vertex editing: drag, insert on edge, ⌥-click remove, ⌘-click smooth | = | Touch: double-tap toggles smooth, press-and-hold removes |
-| Page backgrounds and custom background images | = | |
-| Margin guides with drag-to-adjust | = | |
+| Page backgrounds and custom background images | + | Add Background menu: File, Photo, From Clipboard |
+| Margin guides with drag-to-adjust | + | The facing page's guide follows the drag live (the original updated it on release) |
 | Drag images from the Files area onto pages | = | |
 
 ### Options panel
@@ -103,7 +103,7 @@ difference (see notes).
 | Render text as images | = | Konva rasterises every page at 300 DPI |
 | Pre-rendered items (gradients, shadows, Google Fonts) | + | Pages with gradient/pattern backgrounds keep vector text on top of a background layer |
 | Real text with embedded fonts | + | Subset, full Unicode, TTC; same faces as the editor (the original used standard PDF fonts on the web and dropped non-WinAnsi characters) |
-| PDF preview | = | pdf.js |
+| PDF preview | + | pdf.js; scrolling page column with a thumbnail strip (the original embedded the PDF viewer) |
 | Page/spread PNG export (300 DPI), replace page/spread with image, blank templates | = | |
 
 ## Intentional improvements

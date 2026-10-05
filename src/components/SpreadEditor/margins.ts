@@ -469,6 +469,33 @@ function addMarginDragHandler(
     // Track the current margin value during drag (visual only)
     let currentMarginValue = startMargins[type];
 
+    // The same guide on the facing page moves along (global margins apply
+    // to both pages), unless that page overrides this margin.
+    const mirrored = marginLines
+      .filter(m => m.type === type && m.pageNumber !== pageNumber && m.line.getLayer())
+      .filter(m => getMarginsForPage(m.pageNumber)[type] === startMargins[type])
+      .map(m => ({
+        line: m.line,
+        points: [...m.line.points()],
+        isRecto: spread?.recto?.pageNumber === m.pageNumber,
+      }));
+    const moveMirrored = () => {
+      const delta = currentMarginValue - startMargins[type];
+      for (const m of mirrored) {
+        const p = m.points;
+        if (type === 'top' || type === 'bottom') {
+          const dy = type === 'top' ? delta : -delta;
+          m.line.points([p[0], p[1] + dy, p[2], p[3] + dy]);
+        } else {
+          // Inner guides sit at x + inner (recto) or x + width − inner
+          // (verso); outer guides the other way round.
+          const towardRight = (type === 'inner') === m.isRecto;
+          const dx = towardRight ? delta : -delta;
+          m.line.points([p[0] + dx, p[1], p[2] + dx, p[3]]);
+        }
+      }
+    };
+
     const moveHandler = () => {
       if (!isDraggingMarginRef.value) return;
 
@@ -500,6 +527,8 @@ function addMarginDragHandler(
         currentMarginValue = Math.max(0, startMargins.outer + (isRecto ? -dx : dx));
         line.points([startPoints[0] + dx, startPoints[1], startPoints[2] + dx, startPoints[3]]);
       }
+
+      moveMirrored();
 
       // Update labels and sidebar in real-time
       updateMarginDuringDrag(type, currentMarginValue, marginLabels, marginLayer);

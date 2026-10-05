@@ -2,6 +2,8 @@
  * Panel setup and event handler initialization
  */
 
+import { showContextMenu } from '../../SpreadEditor/selection';
+import { IMAGE_SOURCES, pickImage } from '../../../services/imageSource';
 import { appState } from '../../../services/state';
 import { switchToSelectedTab } from './shared';
 import { addItemToCurrentPage, addImageToCurrentPage } from './itemCreation';
@@ -48,19 +50,19 @@ export function setupEditPagePanel(updateEditSelectedSectionFn: () => void): voi
     addItemToCurrentPage('textFlow');
   });
 
-  // Add Image button
-  document.getElementById('btn-add-image')?.addEventListener('click', () => {
-    // Create file input to select image
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/png,image/jpeg,image/webp,image/gif';
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        await addImageToCurrentPage(file);
-      }
-    };
-    input.click();
+  // Add Image button: File / Photo / From Clipboard
+  const addImageBtn = document.getElementById('btn-add-image');
+  addImageBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const r = addImageBtn.getBoundingClientRect();
+    showContextMenu(r.left, r.bottom + 4, IMAGE_SOURCES.map(({ source, label }) => ({
+      label,
+      action: () => {
+        void pickImage(source).then(file => {
+          if (file) void addImageToCurrentPage(file);
+        });
+      },
+    })));
   });
 
   // Duplicate item button
