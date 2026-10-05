@@ -16,23 +16,24 @@ difference (see notes).
 
 | Feature | Port | Notes |
 |---------|------|-------|
-| Welcome screen: New, Open, Recent | = | |
+| Welcome screen: New, Open, Recent | + | Replaced by the project browser: thumbnail grid of the library with create, open, select, rename, duplicate, share, delete, import, search, drag-in (see [App.md](App.md#project-browser-componentsprojectbrowser)) |
+| New Project picks a save location | ≠ | New projects go to the library (`~/Documents/PrintFold`, iPadOS Documents) as "Untitled" and are renamed from the header or the browser; Open… still opens projects anywhere on macOS |
 | File-first editing, 600 ms auto-save, Saving/Saved indicator | = | Rust writes the archive from its file store |
 | Atomic writes | = | `.tmp` + rename (`platform::atomic_write`) |
-| `.printfold` ZIP format (manifest 2.1.0, `text/`, `images/`, `fonts/`, `static/`) | = | Files open in both apps in both directions |
+| `.printfold` ZIP format (manifest 2.1.0, `text/`, `images/`, `fonts/`, `static/`) | = | Files open in both apps in both directions; the added `preview/thumbnail` entry has no extension, so the original ignores it |
 | Legacy archives (no `pageState`, missing options) | = | |
-| Projects… button to switch | = | Also File › Projects… (⌘⇧O) |
+| Projects… button to switch | = | Now also saves and closes the project; File › Projects… (⌘⇧O) |
 | Double-click a `.printfold` to open (file association) | = / ≠ | macOS: `RunEvent::Opened`. iPadOS: see [ipados.md](ipados.md#limitations) |
 | Single instance, second launch forwards the file | = | macOS apps are single-instance by design; opens go to the running app |
-| Recents | = | `recents.json`; iPadOS also lists the Documents folder |
+| Recents | = | `recents.json`; projects outside the library appear in the browser (macOS) |
 | Web: File System Access handles, Safari/Firefox download fallback, manual Save button | ≠ | Not applicable: there is no browser build. The Save button and the web banner are removed |
 
 ### Files area
 
 | Feature | Port | Notes |
 |---------|------|-------|
-| Text / Images / Fonts tabs, accepted types | = | `.md`; `.png .jpg .jpeg .webp`; `.ttf .otf .woff` |
-| Drag files in, `+ Files` button | = | Native open panel / document picker |
+| Text / Images / Fonts tabs, accepted types | + | `.md` (+ `.markdown`, `.txt`); `.png .jpg .jpeg .webp` (+ HEIC/TIFF/BMP/GIF converted to JPEG); `.ttf .otf .woff` |
+| Drag files in, `+ Files` button | + | Native open panel / document picker; unusable files are reported instead of skipped silently; images can be dropped straight onto a page |
 | Reorder markdown files by dragging | = | Pointer events (works with touch) |
 | Edit / remove icons on hover | = | Always visible on touch screens |
 | Preview pane: CodeMirror markdown editor, image preview, font sample | = | |
@@ -122,9 +123,12 @@ Summarised from the tables above:
    text, and custom background images included in pre-renders.
 7. **Bug fixes**: spilled lines into polygon slots, stale text after
    removing all markdown, block-quote formatting, nested list markers, the
-   Editor/Preview switch blanking the options panel.
-8. **Native integration**: macOS menu bar, document type, iPadOS Files
-   integration, touch and Pencil input.
+   Editor/Preview switch blanking the options panel, pasted/duplicated
+   text-flow regions showing the source's text until the next reflow,
+   `==highlight==` markers printed literally in polygon regions.
+8. **Native integration**: project browser, macOS menu bar, document
+   type, iPadOS Files integration and share sheet, touch and Pencil input,
+   trackpad scrolling and pinch on the canvas.
 9. **Fonts**: TrueType collections and WOFF in the engine.
 
 ## Behaviour differences
@@ -136,6 +140,7 @@ Summarised from the tables above:
 | Plain `content` of sections | No leftover markdown markers or trailing spaces | pulldown-cmark output; both apps render from the inline spans, so visible text is the same |
 | HTML entities | All named entities decoded (`&copy;` → ©) | The original's decoder knew only a few entities |
 | Fonts on iPadOS | Fewer system fonts | Platform; upload fonts to the project |
+| Mouse wheel / trackpad on the canvas | Mouse wheel zooms (as before); trackpad scroll pans; pinch and ⌘/Ctrl + scroll zoom smoothly | The original zoomed on every wheel event, which made trackpads unusable |
 
 ## Parser parity
 

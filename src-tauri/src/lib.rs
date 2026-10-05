@@ -41,6 +41,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_sharekit::init())
         .manage(AppState::new())
         .setup(|app| {
             // Windows/Linux pass a double-clicked file as an argument.
@@ -67,9 +68,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::system::platform_info,
             commands::system::take_pending_opens,
-            commands::system::recents_list,
-            commands::system::recents_add,
-            commands::system::recents_remove,
             commands::fonts::fonts_list,
             commands::fonts::fonts_variants,
             commands::fonts::fonts_register,
@@ -81,11 +79,23 @@ pub fn run() {
             commands::files::files_retain,
             commands::files::pick_files,
             commands::files::save_file,
-            commands::project::project_new,
             commands::project::project_open_dialog,
             commands::project::project_open_path,
             commands::project::project_save,
             commands::project::project_close,
+            commands::library::library_info,
+            commands::library::library_list,
+            commands::library::library_thumbnail,
+            commands::library::library_create,
+            commands::library::library_rename,
+            commands::library::library_duplicate,
+            commands::library::library_delete,
+            commands::library::library_forget,
+            commands::library::library_import,
+            commands::library::library_import_bytes,
+            commands::library::library_share,
+            commands::library::library_reveal,
+            commands::library::project_set_thumbnail,
             commands::pdf::pdf_prerender_plan,
             commands::pdf::pdf_put_prerendered,
             commands::pdf::pdf_clear_prerendered,

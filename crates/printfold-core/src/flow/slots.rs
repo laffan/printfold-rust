@@ -345,7 +345,10 @@ fn flow_into_polygon(
         };
     }
 
-    let content = sentinels_to_numbers(&apply_text_transform(&section.content, style.text_transform.as_deref()));
+    let content = sentinels_to_numbers(&apply_text_transform(
+        &crate::text::strip_highlight_markers(&section.content),
+        style.text_transform.as_deref(),
+    ));
     let hard_lines: Vec<&str> = content.split('\n').collect();
     let align = style.text_align.clone().unwrap_or_else(|| layout.text_align.clone());
 

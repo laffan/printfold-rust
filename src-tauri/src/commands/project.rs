@@ -1,8 +1,8 @@
-//! Project lifecycle: create, open, auto-save.
+//! Project lifecycle: open, auto-save, close (creation lives in `library`).
 
 use std::path::{Path, PathBuf};
 
-use printfold_core::project_file::{export_project, import_project, ProjectExport, ProjectImport};
+use printfold_core::project_file::{export_project_with_thumbnail, import_project, read_thumbnail, ProjectExport, ProjectImport};
 use serde::Serialize;
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::{DialogExt, FileAccessMode};
@@ -28,45 +28,14 @@ pub struct OpenedProject {
     pub data: Option<ProjectImport>,
 }
 
-fn bind(state: &AppState, path: &Path) {
+pub(crate) fn bind(state: &AppState, path: &Path) {
     *state.project_path.lock().unwrap() = Some(path.to_path_buf());
-}
-
-/// Create a new, empty `.printfold` file and bind it as the auto-save
-/// target. macOS asks where to save; iPadOS creates `<name>.printfold` in
-/// PrintFold's Documents folder.
-#[tauri::command]
-pub async fn project_new(app: AppHandle, state: State<'_, AppState>, name: String) -> CmdResult<Option<ProjectLocation>> {
-    let stem = name.trim_end_matches(".printfold").to_string();
-    let path: PathBuf = if let Some(dir) = platform::e2e_dir() {
-        platform::unique_path(&dir, &stem, PROJECT_EXT)
-    } else if cfg!(target_os = "ios") {
-        let dir = platform::documents_dir(&app).ok_or("Documents folder unavailable")?;
-        platform::unique_path(&dir, &stem, PROJECT_EXT)
-    } else {
-        let picked = app
-            .dialog()
-            .file()
-            .set_file_name(format!("{stem}.{PROJECT_EXT}"))
-            .add_filter("PrintFold Project", &[PROJECT_EXT])
-            .blocking_save_file();
-        match picked {
-            Some(fp) => platform::ensure_extension(into_path(fp)?, PROJECT_EXT),
-            None => return Ok(None),
-        }
-    };
-    // Touch the file so it exists before the first edit.
-    std::fs::write(&path, []).map_err(err)?;
-    bind(&state, &path);
-    state.files.lock().unwrap().clear();
-    let name = platform::file_name(&path);
-    platform::add_recent(&app, &path, &name);
-    Ok(Some(ProjectLocation { name, path: path.to_string_lossy().into_owned() }))
 }
 
 fn read_project(state: &AppState, path: &Path) -> CmdResult<OpenedProject> {
     let bytes = std::fs::read(path).map_err(|e| format!("Could not read {}: {e}", path.display()))?;
     let data = if bytes.is_empty() { None } else { Some(import_project(&bytes).map_err(err)?) };
+    *state.thumbnail.lock().unwrap() = read_thumbnail(std::io::Cursor::new(&bytes));
     let mut files = state.files.lock().unwrap();
     files.clear();
     if let Some(d) = &data {
@@ -82,21 +51,26 @@ fn read_project(state: &AppState, path: &Path) -> CmdResult<OpenedProject> {
     Ok(OpenedProject { name: platform::file_name(path), path: path.to_string_lossy().into_owned(), data })
 }
 
-/// On iPadOS, projects opened from elsewhere are copied into Documents so
-/// auto-save always targets a file inside the sandbox.
+/// On iPadOS, projects opened from elsewhere are copied into the library
+/// (Documents) so auto-save always targets a file inside the sandbox.
 fn localize(app: &AppHandle, path: PathBuf) -> CmdResult<PathBuf> {
     if !cfg!(target_os = "ios") {
         return Ok(path);
     }
-    let dir = platform::documents_dir(app).ok_or("Documents folder unavailable")?;
+    let dir = platform::library_dir(app).ok_or("Documents folder unavailable")?;
     if path.parent().map(|p| p == dir).unwrap_or(false) {
         return Ok(path);
     }
     let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Untitled".into());
     let target = platform::unique_path(&dir, &stem, PROJECT_EXT);
+    // Files shared to PrintFold ("Open in…", AirDrop) arrive as copies in
+    // Documents/Inbox: move them into the library instead of duplicating.
+    if path.parent().map(|p| p == dir.join("Inbox")).unwrap_or(false) && std::fs::rename(&path, &target).is_ok() {
+        return Ok(target);
+    }
     std::fs::copy(&path, &target).map_err(|e| {
         format!(
-            "PrintFold can't read \"{}\" where it is ({e}). Use Open Project to import a copy.",
+            "PrintFold can't read \"{}\" where it is ({e}). Use Import in the project browser to add a copy.",
             platform::file_name(&path)
         )
     })?;
@@ -132,7 +106,9 @@ pub async fn project_save(state: State<'_, AppState>, project: ProjectExport) ->
     let path = state.project_path.lock().unwrap().clone().ok_or("No project file is open")?;
     let bytes = {
         let files = state.files.lock().unwrap();
-        export_project(&project, &|id| files.bytes(id).map(|b| (*b).clone())).map_err(err)?
+        let thumbnail = state.thumbnail.lock().unwrap();
+        export_project_with_thumbnail(&project, &|id| files.bytes(id).map(|b| (*b).clone()), thumbnail.as_deref())
+            .map_err(err)?
     };
     platform::atomic_write(&path, &bytes).map_err(|e| format!("Could not save {}: {e}", path.display()))
 }
@@ -140,4 +116,5 @@ pub async fn project_save(state: State<'_, AppState>, project: ProjectExport) ->
 #[tauri::command]
 pub fn project_close(state: State<'_, AppState>) {
     *state.project_path.lock().unwrap() = None;
+    *state.thumbnail.lock().unwrap() = None;
 }

@@ -76,6 +76,29 @@ fn capitalize_words(text: &str) -> String {
 
 /// Number of UTF-16 code units (JS `string.length`), used when the frontend
 /// needs character offsets compatible with JavaScript strings.
+/// Remove `==highlight==` markers (in pairs, per line) from plain text.
+/// Plain `content` keeps them; text drawn without spans must not show them.
+pub fn strip_highlight_markers(text: &str) -> String {
+    text.split('\n')
+        .map(|line| {
+            let parts: Vec<&str> = line.split("==").collect();
+            let pairs = (parts.len() - 1) / 2;
+            let mut out = String::with_capacity(line.len());
+            for (i, part) in parts.iter().enumerate() {
+                if i > 0 {
+                    // Markers 1..=2*pairs are removed; an unpaired last one stays.
+                    if i > pairs * 2 {
+                        out.push_str("==");
+                    }
+                }
+                out.push_str(part);
+            }
+            out
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 pub fn utf16_len(text: &str) -> usize {
     text.encode_utf16().count()
 }
@@ -83,6 +106,14 @@ pub fn utf16_len(text: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strips_paired_highlight_markers() {
+        assert_eq!(strip_highlight_markers("a ==b c== d"), "a b c d");
+        assert_eq!(strip_highlight_markers("x == y"), "x == y");
+        assert_eq!(strip_highlight_markers("==a== ==b== ==c"), "a b ==c");
+        assert_eq!(strip_highlight_markers("==a==\nb"), "a\nb");
+    }
 
     #[test]
     fn js_split_semantics() {

@@ -73,11 +73,11 @@ pub async fn pick_files(app: AppHandle, filters: Vec<Filter>, multiple: bool) ->
         let bytes = std::fs::read(&path).map_err(err)?;
         let name = platform::file_name(&path);
         let ext = name.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_default();
-        let file_type = file_type_for_extension(&ext).to_string();
-        let is_text = file_type == "markdown" || ext == "txt";
+        let is_text = matches!(ext.as_str(), "md" | "markdown" | "txt");
+        let file_type = if is_text { "markdown".to_string() } else { file_type_for_extension(&ext).to_string() };
         out.push(PickedFile {
             name,
-            file_type: if ext == "txt" { "markdown".into() } else { file_type },
+            file_type,
             content: if is_text {
                 String::from_utf8_lossy(&bytes).into_owned()
             } else {
@@ -90,39 +90,37 @@ pub async fn pick_files(app: AppHandle, filters: Vec<Filter>, multiple: bool) ->
 }
 
 /// Save bytes chosen by the user. Raw body = file content; headers:
-/// `x-file-name`, `x-filter-name`, `x-filter-ext` (comma separated).
+/// `x-file-name`, `x-filter-name`, `x-filter-ext` (comma separated), and
+/// optionally `x-anchor` ("x,y" in webview coordinates) for the share
+/// popover.
 ///
-/// macOS: a save panel. iPadOS: the file is written to PrintFold's
-/// Documents folder, then the system "Save to Files" sheet lets the user
-/// export it elsewhere (cancelling keeps the copy in Documents).
+/// macOS: a save panel. iPadOS: the system share sheet (Save to Files,
+/// AirDrop, Mail, Print …) for a temporary copy.
 #[tauri::command]
-pub async fn save_file(app: AppHandle, request: tauri::ipc::Request<'_>) -> CmdResult<bool> {
+pub async fn save_file(app: AppHandle, window: tauri::WebviewWindow, request: tauri::ipc::Request<'_>) -> CmdResult<bool> {
     let bytes = raw_body(&request)?;
-    let name = header(&request, "x-file-name").unwrap_or_else(|| "export".into());
+    let name = sanitize_name(&header(&request, "x-file-name").unwrap_or_else(|| "export".into()));
     let filter_name = header(&request, "x-filter-name").unwrap_or_else(|| "File".into());
     let exts: Vec<String> = header(&request, "x-filter-ext")
         .map(|s| s.split(',').map(|e| e.trim().to_string()).filter(|e| !e.is_empty()).collect())
         .unwrap_or_default();
-    save_bytes(&app, &bytes, &name, &filter_name, &exts)
-}
-
-pub(crate) fn save_bytes(app: &AppHandle, bytes: &[u8], name: &str, filter_name: &str, exts: &[String]) -> CmdResult<bool> {
-    let ext_refs: Vec<&str> = exts.iter().map(String::as_str).collect();
     if let Some(dir) = platform::e2e_dir() {
-        platform::atomic_write(&dir.join(sanitize_name(name)), bytes).map_err(err)?;
+        platform::atomic_write(&dir.join(&name), &bytes).map_err(err)?;
         return Ok(true);
     }
-    if cfg!(target_os = "ios") {
-        let dir = platform::documents_dir(app).ok_or("Documents folder unavailable")?;
-        let target = dir.join(sanitize_name(name));
-        platform::atomic_write(&target, bytes).map_err(err)?;
-        // The picker exports the existing file at Documents/<name>.
-        let _ = app.dialog().file().set_file_name(platform::file_name(&target)).blocking_save_file();
+    if cfg!(mobile) {
+        let (x, y) = header(&request, "x-anchor")
+            .and_then(|a| a.split_once(',').and_then(|(x, y)| Some((x.trim().parse().ok()?, y.trim().parse().ok()?))))
+            .unwrap_or((0.0, 0.0));
+        let tmp = std::env::temp_dir().join(&name);
+        platform::atomic_write(&tmp, &bytes).map_err(err)?;
+        super::library::share_path(&app, window, &tmp, x, y).await?;
         return Ok(true);
     }
-    let mut dialog = app.dialog().file().set_file_name(name);
+    let ext_refs: Vec<&str> = exts.iter().map(String::as_str).collect();
+    let mut dialog = app.dialog().file().set_file_name(&name);
     if !ext_refs.is_empty() {
-        dialog = dialog.add_filter(filter_name, &ext_refs);
+        dialog = dialog.add_filter(&filter_name, &ext_refs);
     }
     let Some(fp) = dialog.blocking_save_file() else { return Ok(false) };
     let mut path = into_path(fp)?;

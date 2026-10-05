@@ -15,7 +15,7 @@ import { renderPageToImage } from './pageRenderer';
 import { calculatePageDimensions } from './pageGeometry';
 import type { PageContent } from '../types';
 
-function dataUrlToBytes(dataUrl: string): Uint8Array {
+export function dataUrlToBytes(dataUrl: string): Uint8Array {
   const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);

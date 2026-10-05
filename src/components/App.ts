@@ -13,15 +13,11 @@ import { SpreadEditor } from './SpreadEditor';
 import { PDFPreview } from './PDFPreview';
 import { OptionsPanel } from './OptionsPanel';
 import { updateStylesTab } from './OptionsPanel/stylesTab';
-import { importProject, saveProject } from '../services/projectIO';
 import { generatePdf } from '../services/pdfExport';
-import { projectFile } from '../services/projectFile';
-import { recentProjects, type RecentEntry } from '../services/recentProjects';
-import { showAlert, showPrompt } from '../services/dialogs';
-import { WelcomeScreen, type WelcomeAction } from './WelcomeScreen';
-import type { BookletProject, ProjectFile } from '../types';
-
-const AUTOSAVE_DEBOUNCE_MS = 600;
+import { showAlert } from '../services/dialogs';
+import { ProjectBrowser } from './ProjectBrowser';
+import { ProjectSession } from './projectSession';
+import type { BookletProject } from '../types';
 
 export class App {
   private fileList!: FileList;
@@ -29,13 +25,9 @@ export class App {
   private spreadEditor!: SpreadEditor;
   private pdfPreview!: PDFPreview;
   private optionsPanel!: OptionsPanel;
-  private welcomeScreen!: WelcomeScreen;
-
-  /** Debounced auto-save handle. */
-  private autoSaveTimer: number | null = null;
-  /** Suppress auto-save while loading an existing project (avoids
-   *  re-writing the file we just read). */
-  private suppressAutoSave = false;
+  private browser!: ProjectBrowser;
+  /** The open project's file: lifecycle, auto-save, file store, thumbnail. */
+  private session = new ProjectSession(() => this.performReflow());
 
   /** Reflow bookkeeping: one request in flight, re-run if inputs changed. */
   private reflowInFlight: Promise<void> | null = null;
@@ -48,7 +40,7 @@ export class App {
     this.spreadEditor = new SpreadEditor();
     this.pdfPreview = new PDFPreview();
     this.optionsPanel = new OptionsPanel();
-    this.welcomeScreen = new WelcomeScreen();
+    this.browser = new ProjectBrowser();
 
     // Mount components
     this.fileList.mount();
@@ -56,8 +48,11 @@ export class App {
     this.spreadEditor.mount();
     this.pdfPreview.mount();
     this.optionsPanel.mount();
-    this.welcomeScreen.mount();
-    this.welcomeScreen.setOnAction((action) => this.handleWelcomeAction(action));
+    this.browser.mount({
+      open: (path) => this.openProject(path),
+      create: () => this.createProject(),
+      openElsewhere: () => this.openProjectElsewhere(),
+    });
 
     // Connect file list to preview
     this.fileList.setOnFileSelect((file) => {
@@ -71,15 +66,15 @@ export class App {
     this.setupOptionsTabs();
     this.setupCollapsiblePanels();
     this.setupStateListeners();
-    this.setupNativeFileStore();
+    this.session.setup();
     this.setupResizers();
-    this.setupAutoSave();
+    this.setupEditorShortcuts();
     void this.setupFileAssociations();
     void this.setupNativeMenu();
 
-    // Show the welcome screen — the user must create or open a project
+    // Start in the project browser — a project must be created or opened
     // before the editor becomes interactive.
-    void this.welcomeScreen.show();
+    void this.browser.show();
 
     console.log('PrintFold initialized', bridge.platform);
   }
@@ -88,86 +83,39 @@ export class App {
   // Welcome screen / project file lifecycle
   // -------------------------------------------------------------------
 
-  private async handleWelcomeAction(action: WelcomeAction): Promise<void> {
+  private async createProject(): Promise<void> {
+    await this.session.create();
+    this.browser.hide();
+  }
+
+  private async openProject(path: string): Promise<void> {
+    await this.session.openPath(path);
+    this.browser.hide();
+  }
+
+  private async openProjectElsewhere(): Promise<void> {
+    if (await this.session.openDialog()) this.browser.hide();
+    else await this.browser.refresh();
+  }
+
+  /** Save and close the open project, then show all projects. */
+  private async showProjects(): Promise<void> {
     try {
-      if (action.kind === 'new') {
-        await this.createNewProject();
-      } else if (action.kind === 'open') {
-        await this.openExistingProject();
-      } else if (action.kind === 'openRecent') {
-        await this.openRecentProject(action.entry);
-      }
+      await this.session.close();
     } catch (e) {
-      console.error('Welcome action failed:', e);
-      await showAlert(`Could not open project: ${errorMessage(e)}`);
+      console.error('Closing the project failed:', e);
     }
+    await this.browser.show();
   }
 
-  private async createNewProject(): Promise<void> {
-    // iPadOS has no save panel: projects live in PrintFold's Documents
-    // folder, so ask for a name instead.
-    let name = 'Untitled';
-    if (env.isMobile) {
-      const entered = await showPrompt('New Project', 'Project name', 'Untitled', 'Create');
-      if (entered === null) return;
-      name = entered;
-    }
-    const dest = await bridge.projectNew(name);
-    if (!dest) return;
-
-    // Reset to a fresh project, then bind the file destination and
-    // perform the initial write so the .printfold file on disk reflects
-    // the empty starting state.
-    this.suppressAutoSave = true;
-    this.markFilesSynced([]);
-    appState.reset();
-    appState.updateProject({ name: stripExtension(dest.name) });
-    projectFile.bind(dest.path, dest.name);
-    this.suppressAutoSave = false;
-
-    this.welcomeScreen.hide();
-    this.updateHeaderForProject();
-    await this.performReflow();
-    await this.saveNow();
-  }
-
-  private async openExistingProject(): Promise<void> {
-    const opened = await bridge.projectOpenDialog();
-    if (!opened) return;
-    await this.loadOpenedProject(opened);
-  }
-
-  private async openRecentProject(entry: RecentEntry): Promise<void> {
+  /** Report failures of user-initiated project actions. */
+  private async guard(action: () => Promise<void>): Promise<void> {
     try {
-      const opened = await bridge.projectOpenPath(entry.path);
-      await this.loadOpenedProject(opened);
+      await action();
     } catch (e) {
-      await recentProjects.remove(entry);
-      throw e;
+      console.error('Project action failed:', e);
+      await showAlert(errorMessage(e));
     }
-  }
-
-  private async loadOpenedProject(opened: Awaited<ReturnType<typeof bridge.projectOpenPath>>): Promise<void> {
-    this.suppressAutoSave = true;
-    try {
-      // Empty file (e.g. a project created but never edited): blank project.
-      if (!opened.data) {
-        this.markFilesSynced([]);
-        appState.reset();
-      } else {
-        // Binary files were loaded into the native store while decoding.
-        this.markFilesSynced(opened.data.files);
-        await importProject(opened.data);
-      }
-      appState.updateProject({ name: stripExtension(opened.name) });
-      projectFile.bind(opened.path, opened.name);
-    } finally {
-      this.suppressAutoSave = false;
-    }
-
-    this.welcomeScreen.hide();
-    this.updateHeaderForProject();
-    await this.performReflow();
   }
 
   // -------------------------------------------------------------------
@@ -186,11 +134,11 @@ export class App {
 
   private async openProjectFromPath(path: string): Promise<void> {
     try {
-      const opened = await bridge.projectOpenPath(path);
-      await this.loadOpenedProject(opened);
+      await this.openProject(path);
     } catch (e) {
       console.error('Open from path failed:', e);
       await showAlert(`Could not open project: ${errorMessage(e)}`);
+      if (this.browser.isVisible) await this.browser.refresh();
     }
   }
 
@@ -201,9 +149,9 @@ export class App {
       await bridge.onMenu((id) => {
         const inEditor = document.body.classList.contains('welcome-active') === false;
         switch (id) {
-          case 'new-project': void this.handleWelcomeAction({ kind: 'new' }); break;
-          case 'open-project': void this.handleWelcomeAction({ kind: 'open' }); break;
-          case 'projects': void this.welcomeScreen.show(); break;
+          case 'new-project': void this.guard(() => this.createProject()); break;
+          case 'open-project': void this.guard(() => this.openProjectElsewhere()); break;
+          case 'projects': if (inEditor) void this.showProjects(); break;
           case 'add-files': if (inEditor) click('#btn-add-files'); break;
           case 'export-pdf': if (inEditor) click('#btn-export'); break;
           case 'toggle-sidebar': click('#btn-toggle-sidebar'); break;
@@ -216,107 +164,46 @@ export class App {
     }
   }
 
-  private updateHeaderForProject(): void {
-    const display = document.getElementById('project-name-display');
-    if (display) display.textContent = projectFile.getName();
-  }
-
-  // -------------------------------------------------------------------
-  // Auto-save
-  // -------------------------------------------------------------------
-
-  private setupAutoSave(): void {
-    appState.onProjectChange(() => {
-      if (this.suppressAutoSave) return;
-      if (!projectFile.hasFile()) return;
-      this.scheduleAutoSave();
-    });
-  }
-
-  private scheduleAutoSave(): void {
-    if (this.autoSaveTimer !== null) {
-      clearTimeout(this.autoSaveTimer);
-    }
-    this.setSaveStatus('Saving…', 'saving');
-    this.autoSaveTimer = window.setTimeout(() => {
-      this.autoSaveTimer = null;
-      void this.saveNow();
-    }, AUTOSAVE_DEBOUNCE_MS);
-  }
-
-  private async saveNow(): Promise<void> {
-    if (!projectFile.hasFile()) return;
-    try {
-      await this.syncFilesNow();
-      await saveProject();
-      this.setSaveStatus('Saved', '');
-    } catch (e) {
-      console.error('Auto-save failed:', e);
-      this.setSaveStatus('Save failed', 'error');
-    }
-  }
-
-  private setSaveStatus(text: string, cls: 'saving' | 'error' | ''): void {
-    const el = document.getElementById('save-status');
-    if (!el) return;
-    el.textContent = text;
-    el.classList.remove('saving', 'error');
-    if (cls) el.classList.add(cls);
-  }
-
-  // -------------------------------------------------------------------
-  // Native file store: binary files (images, fonts) are mirrored to Rust
-  // once, so saves, reflows and exports don't resend them.
-  // -------------------------------------------------------------------
-
-  private syncedFiles = new Map<string, ProjectFile>();
-  private fileSync: Promise<void> = Promise.resolve();
-
-  private markFilesSynced(files: ProjectFile[]): void {
-    this.syncedFiles.clear();
-    for (const f of files) if (f.isBase64) this.syncedFiles.set(f.id, f);
-  }
-
-  private setupNativeFileStore(): void {
-    appState.onProjectChange((project, prev) => {
-      if (project.files !== prev.files) this.fileSync = this.fileSync.then(() => this.syncFiles(project.files));
-    });
-  }
-
-  private syncFilesNow(): Promise<void> {
-    this.fileSync = this.fileSync.then(() => this.syncFiles(appState.getProject().files));
-    return this.fileSync;
-  }
-
-  private async syncFiles(files: ProjectFile[]): Promise<void> {
-    try {
-      const binary = files.filter(f => f.isBase64);
-      for (const file of binary) {
-        const known = this.syncedFiles.get(file.id);
-        if (known === file) continue;
-        if (known && known.content === file.content) {
-          if (known.name !== file.name) await bridge.fileRename(file.id, file.name);
-        } else {
-          await bridge.filePut(file);
-        }
-        this.syncedFiles.set(file.id, file);
+  /**
+   * Keyboard shortcuts for the editor that the macOS menu bar provides
+   * natively — needed on iPadOS (hardware keyboard), harmless on macOS
+   * where the menu consumes them first.
+   */
+  private setupEditorShortcuts(): void {
+    if (!env.isMobile) return;
+    document.addEventListener('keydown', (e) => {
+      if (this.browser.isVisible || !(e.metaKey || e.ctrlKey)) return;
+      if (!document.getElementById('modal-overlay')?.classList.contains('hidden')) return;
+      const key = e.key.toLowerCase();
+      const click = (selector: string) => (document.querySelector(selector) as HTMLElement | null)?.click();
+      if (key === 'o' && e.shiftKey) {
+        e.preventDefault();
+        void this.showProjects();
+      } else if (key === 'n' && !e.shiftKey) {
+        e.preventDefault();
+        void this.guard(() => this.createProject());
+      } else if (key === 'e' && !e.shiftKey) {
+        e.preventDefault();
+        click('#btn-export');
+      } else if (key === 'a' && e.shiftKey) {
+        e.preventDefault();
+        click('#btn-add-files');
+      } else if (key === '1' || key === '2') {
+        e.preventDefault();
+        click(`.column-header .tab[data-tab="${key === '1' ? 'editor' : 'preview'}"]`);
       }
-      const ids = binary.map(f => f.id);
-      if (this.syncedFiles.size !== ids.length) {
-        for (const id of Array.from(this.syncedFiles.keys())) {
-          if (!ids.includes(id)) this.syncedFiles.delete(id);
-        }
-        await bridge.filesRetain(ids);
-      }
-    } catch (e) {
-      console.error('File store sync failed:', e);
-    }
+    });
   }
 
   private setupHeaderButtons(): void {
-    // Re-open the welcome screen (for switching projects)
+    // Back to the project browser (saves and closes the project)
     document.getElementById('btn-welcome')?.addEventListener('click', () => {
-      void this.welcomeScreen.show();
+      void this.showProjects();
+    });
+
+    // Click the project name to rename the file
+    document.getElementById('project-name-display')?.addEventListener('click', () => {
+      void this.guard(() => this.session.renameCurrent());
     });
 
     // Export PDF button
@@ -324,7 +211,7 @@ export class App {
       const button = document.getElementById('btn-export') as HTMLButtonElement | null;
       if (button) button.disabled = true;
       try {
-        await this.syncFilesNow();
+        await this.session.syncFilesNow();
         const pdfBytes = await generatePdf();
         await env.saveFile({
           defaultName: `${appState.getProject().name}.pdf`,
@@ -405,7 +292,7 @@ export class App {
         if (tabName === 'editor') {
           this.spreadEditor.resize();
         } else if (tabName === 'preview') {
-          void this.syncFilesNow().then(() => this.pdfPreview.refresh());
+          void this.session.syncFilesNow().then(() => this.pdfPreview.refresh());
         }
       });
     });
@@ -716,7 +603,7 @@ export class App {
     const project = appState.getProject();
     const markdown = project.files.filter(f => f.type === 'markdown').map(f => f.content).join('\n\n');
     // Images must be in the native store so markdown images can be sized.
-    await this.syncFilesNow();
+    await this.session.syncFilesNow();
     let result;
     try {
       result = await bridge.reflow(markdown, snapshot(project));
@@ -762,10 +649,6 @@ export class App {
     document.getElementById('info-signatures')!.textContent = signatureCount.toString();
     document.getElementById('info-sheets')!.textContent = sheetCount.toString();
   }
-}
-
-function stripExtension(name: string): string {
-  return name.replace(/\.printfold$/i, '');
 }
 
 function errorMessage(e: unknown): string {

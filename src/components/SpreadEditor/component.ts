@@ -14,7 +14,9 @@ import { drawMarginGuides, getMarginsForPage } from './margins';
 import { drawPageContent, getFontStyleForSection } from './content';
 import { switchToSelectedTab } from '../OptionsPanel/editPage';
 import { createSelectionMarquee, showContextMenu, createItemContextMenu, createPasteMenuItems, hideContextMenu } from './selection';
-import { PRESS, MOVE, RELEASE, TAP, isPrimaryPress, modifier, isTouch, onLongPress, enablePinchZoom } from './pointer';
+import { PRESS, MOVE, RELEASE, TAP, isPrimaryPress, modifier, isTouch, onLongPress, enablePinchZoom, enableWheelNavigation } from './pointer';
+import { importDroppedFiles, skippedMessage } from '../../services/fileImport';
+import { showAlert } from '../../services/dialogs';
 
 // Type for visual spreads (reading order pairs)
 interface VisualSpread {
@@ -112,14 +114,16 @@ export class SpreadEditor {
   }
 
   /**
-   * Set up drop zone for dragging images from file list
+   * Drop zone for images: dragged from the Files panel, or dropped from
+   * other apps (Finder, Files, Photos), which also adds them to the project.
    */
   private setupImageDropZone(): void {
     const container = this.container;
+    const accepts = (dt: DataTransfer | null) =>
+      !!dt && (dt.types.includes('application/x-printfold-image') || dt.types.includes('Files'));
 
     container.addEventListener('dragover', (e) => {
-      const dt = e.dataTransfer;
-      if (dt?.types.includes('application/x-printfold-image')) {
+      if (accepts(e.dataTransfer)) {
         e.preventDefault();
         e.dataTransfer!.dropEffect = 'copy';
         container.classList.add('drop-target');
@@ -136,40 +140,43 @@ export class SpreadEditor {
     container.addEventListener('drop', (e) => {
       container.classList.remove('drop-target');
       const dt = e.dataTransfer;
-      if (!dt?.types.includes('application/x-printfold-image')) return;
-
+      if (!accepts(dt)) return;
       e.preventDefault();
-      const fileId = dt.getData('application/x-printfold-image');
-      if (!fileId) return;
 
-      // Check if a static/blank page is selected
-      const editorState = appState.getEditor();
-      if (editorState.selectedPageNumber === null) {
-        // Try to find which page was dropped on based on position
-        const rect = container.getBoundingClientRect();
-        const dropX = e.clientX - rect.left;
-        const pageWidth = this.getPageDimensions().width * this.zoomLevel;
-        const spreadWidth = pageWidth * 2;
-        const stageX = this.stage.x();
-
-        // Determine if drop is on verso or recto
-        const relativeX = (dropX - stageX) / this.zoomLevel;
-        const isRecto = relativeX > pageWidth;
-
-        // Get current spread
-        const spread = this.getCurrentSpread();
-        if (spread) {
-          const page = isRecto ? spread.recto : spread.verso;
-          if (page && (page.isBlank || page.isStatic)) {
-            // Import and dispatch event to add image
-            this.addImageToPage(fileId, page.pageNumber, isRecto ? 'recto' : 'verso');
-          }
-        }
-      } else {
-        // Use the already selected page
-        this.addImageToPage(fileId, editorState.selectedPageNumber, editorState.selectedPagePosition || 'recto');
+      const fileId = dt!.getData('application/x-printfold-image');
+      if (fileId) {
+        // From the Files panel: the selected page, else the page under the pointer.
+        const editorState = appState.getEditor();
+        const target = editorState.selectedPageNumber !== null
+          ? { pageNumber: editorState.selectedPageNumber, position: editorState.selectedPagePosition || 'recto' as const }
+          : this.pageAtClientX(e.clientX);
+        if (target) this.addImageToPage(fileId, target.pageNumber, target.position);
+        return;
       }
+
+      // From another app: add to the project, place the first image on the
+      // static/blank page under the pointer.
+      const target = this.pageAtClientX(e.clientX);
+      void importDroppedFiles(dt!.files).then(result => {
+        if (result.files.length > 0) appState.addFiles(result.files);
+        if (result.skipped.length > 0) void showAlert(skippedMessage(result.skipped));
+        const image = result.files.find(f => f.type === 'image');
+        if (image && target) this.addImageToPage(image.id, target.pageNumber, target.position);
+      });
     });
+  }
+
+  /** The static or blank page of the current spread under a client x. */
+  private pageAtClientX(clientX: number): { pageNumber: number; position: 'verso' | 'recto' } | null {
+    const rect = this.container.getBoundingClientRect();
+    const pageWidth = this.getPageDimensions().width;
+    const relativeX = (clientX - rect.left - this.stage.x()) / this.zoomLevel;
+    // Single-sided layouts show one page per view, held as the verso.
+    const isRecto = !this.isSinglePageLayout() && relativeX > pageWidth;
+    const spread = this.getCurrentSpread();
+    const page = spread ? (isRecto ? spread.recto : spread.verso) : null;
+    if (!page || !(page.isBlank || page.isStatic)) return null;
+    return { pageNumber: page.pageNumber, position: isRecto ? 'recto' : 'verso' };
   }
 
   /**
@@ -549,31 +556,8 @@ export class SpreadEditor {
       appState.addStaticPage('recto');
     });
 
-    // Mouse wheel zoom
-    this.stage.on('wheel', (e) => {
-      e.evt.preventDefault();
-      const scaleBy = 1.1;
-      const oldScale = this.zoomLevel;
-
-      const pointer = this.stage.getPointerPosition();
-      if (!pointer) return;
-
-      const mousePointTo = {
-        x: (pointer.x - this.stage.x()) / oldScale,
-        y: (pointer.y - this.stage.y()) / oldScale,
-      };
-
-      const direction = e.evt.deltaY > 0 ? -1 : 1;
-      const newScale = direction > 0 ? oldScale * scaleBy : oldScale / scaleBy;
-
-      this.setZoom(Math.max(0.25, Math.min(3, newScale)), true); // true = manual zoom
-
-      const newPos = {
-        x: pointer.x - mousePointTo.x * this.zoomLevel,
-        y: pointer.y - mousePointTo.y * this.zoomLevel,
-      };
-      this.stage.position(newPos);
-    });
+    // Mouse wheel zooms; trackpad scroll pans; pinch zooms.
+    enableWheelNavigation(this.stage, () => this.zoomLevel, (zoom) => this.setZoom(zoom, true));
 
     // Drag to pan
     let isPanning = false;

@@ -107,20 +107,43 @@ def main():
     failures = []
     try:
         run.launch()
-        run.wait(lambda: run.visible("#welcome-screen"), what="welcome screen")
-        run.shot("01-welcome")
+        run.wait(lambda: run.visible("#welcome-screen"), what="project browser")
+        run.shot("01-browser-empty")
 
         # New project → editor
-        run.click("#welcome-new")
+        run.click("#browser-new")
         run.wait(lambda: not run.visible("#welcome-screen"), what="editor")
         project_files = list(workdir.glob("*.printfold"))
         assert project_files, "new project file was not created"
         log(f"project file: {project_files[0].name}")
 
+        # Rename from the header (click the project name)
+        run.click("#project-name-display")
+        run.wait(lambda: run.js("return !!document.getElementById('modal-prompt-input')"), what="rename prompt")
+        run.js("const i = document.getElementById('modal-prompt-input'); i.value = 'Field Guide';")
+        run.click("#modal-confirm")
+        run.wait(lambda: (workdir / "Field Guide.printfold").exists(), what="renamed project file")
+        assert run.text("#project-name-display") == "Field Guide", run.text("#project-name-display")
+        log("renamed from the header: Field Guide.printfold")
+
         # Add markdown + image via the Files "+" button (picker hook)
         run.click("#btn-add-files")
         run.wait(lambda: run.js("return document.querySelectorAll('.file-item').length") >= 1,
                  what="file list")
+
+        # Drop a .txt file from "another app" onto the Files panel: it
+        # becomes a markdown file.
+        run.js("""
+            const dt = new DataTransfer();
+            dt.items.add(new File(['Dropped notes.'], 'notes.txt', {type: 'text/plain'}));
+            const list = document.getElementById('file-list');
+            for (const type of ['dragenter', 'dragover', 'drop']) {
+                list.dispatchEvent(new DragEvent(type, {dataTransfer: dt, bubbles: true, cancelable: true}));
+            }
+        """)
+        run.wait(lambda: run.js("return [...document.querySelectorAll('.file-item')].some(e => e.textContent.includes('notes.md'))"),
+                 what="dropped text file")
+        log("dropped notes.txt → notes.md")
 
         # Wait for reflow: more than the default 4 pages laid out with text
         run.wait(lambda: int(run.text("#info-pages") or 0) >= 8, timeout=60, what="reflow")
@@ -148,7 +171,7 @@ def main():
 
         # Export PDF (save hook writes to the work dir)
         run.click("#btn-export")
-        pdf_path = workdir / f"{project_files[0].stem}.pdf"
+        pdf_path = workdir / "Field Guide.pdf"
         run.wait(lambda: pdf_path.exists() and pdf_path.stat().st_size > 1000, timeout=90, what="pdf export")
         info = subprocess.run(["pdfinfo", str(pdf_path)], capture_output=True, text=True).stdout
         log("exported PDF: " + " | ".join(l for l in info.splitlines() if l.startswith(("Pages", "Page size"))))
@@ -200,6 +223,24 @@ def main():
                  what="paste menu")
         run.js("[...document.querySelectorAll('.context-menu div')].find(d => d.textContent === 'Paste').click()")
         time.sleep(1)
+        # Drop an image file from "another app" onto the static page.
+        payload_png = __import__("base64").b64encode((FIXTURES / "picture.png").read_bytes()).decode()
+        run.js("""
+            const bytes = Uint8Array.from(atob(arguments[0]), c => c.charCodeAt(0));
+            const dt = new DataTransfer();
+            dt.items.add(new File([bytes], 'dropped-photo.png', {type: 'image/png'}));
+            const content = document.querySelector('#konva-container');
+            const r = content.getBoundingClientRect();
+            for (const type of ['dragenter', 'dragover', 'drop']) {
+                content.dispatchEvent(new DragEvent(type, {dataTransfer: dt, bubbles: true, cancelable: true,
+                    clientX: r.left + arguments[1], clientY: r.top + arguments[2]}));
+            }
+        """, payload_png, x + rw / 2, y + rh / 2)
+        run.wait(lambda: run.js("return Konva.stages[0].find(n => n.getClassName() === 'Image' && n.getAttr('itemId')).length") >= 1,
+                 what="dropped image placed")
+        log("dropped an image file onto the static page")
+        time.sleep(0.5)
+
         # Back to page selection (empty page space) for the page export below.
         ActionChains(run.driver).move_to_element_with_offset(container, int(x + rw - 12 - w / 2), int(y + rh - 12 - h / 2)).click().perform()
         time.sleep(0.5)
@@ -235,7 +276,7 @@ def main():
 
         # Auto-save wrote a real project archive
         time.sleep(2)
-        project = project_files[0]
+        project = workdir / "Field Guide.printfold"
         with zipfile.ZipFile(project) as z:
             names = z.namelist()
         assert "project.json" in names and any(n.startswith("text/") for n in names), names
@@ -244,14 +285,75 @@ def main():
         with zipfile.ZipFile(project) as z:
             item_count = sum(len(json.loads(z.read(n)).get("items", [])) for n in names if n.startswith("static/") and n.endswith(".json"))
         log(f"items on static pages: {item_count}")
-        assert item_count >= 4, "expected rectangle, text, text-flow region and the pasted copy"
+        assert item_count >= 5, "expected rectangle, text, text-flow region, the pasted copy and the dropped image"
 
-        # Reopen from the welcome screen's recents
+        # Back to the project browser: the project is saved with a cover
+        # thumbnail and shown as a card.
         run.click("#btn-welcome")
-        run.wait(lambda: run.visible("#welcome-screen"), what="welcome again")
-        run.shot("05-recents")
-        run.wait(lambda: run.js("return document.querySelectorAll('.recent-row').length") >= 1, what="recents")
-        run.click(".recent-row")
+        run.wait(lambda: run.visible("#welcome-screen"), what="project browser again")
+        run.wait(lambda: run.js("return document.querySelectorAll('.project-card').length") == 1, what="one card")
+        run.wait(lambda: run.js("return !!document.querySelector('.project-card .card-page img')"), what="thumbnail")
+        with zipfile.ZipFile(project) as z:
+            assert "preview/thumbnail" in z.namelist(), "thumbnail missing from archive"
+        time.sleep(0.5)
+        run.shot("05-browser")
+
+        def cards():
+            return run.js("return [...document.querySelectorAll('.project-card .card-name')].map(n => n.textContent)")
+
+        def card_selector(name):
+            return run.js("""
+                const c = [...document.querySelectorAll('.project-card')].find(c => c.querySelector('.card-name').textContent === arguments[0]);
+                return c ? '.project-card[data-path="' + CSS.escape(c.dataset.path) + '"]' : null;
+            """, name)
+
+        # Select + Duplicate from the selection toolbar
+        run.click(card_selector("Field Guide") + " .card-thumb")
+        run.wait(lambda: run.js("return document.getElementById('browser-toolbar').classList.contains('active')"),
+                 what="selection toolbar")
+        time.sleep(0.4)  # toolbar slides open
+        run.click('[data-browser-action="duplicate"]')
+        run.wait(lambda: "Field Guide copy" in cards(), what="duplicate")
+        assert (workdir / "Field Guide copy.printfold").exists()
+
+        # Inline rename (double-click the name)
+        ActionChains(run.driver).double_click(
+            run.driver.find_element(By.CSS_SELECTOR, card_selector("Field Guide copy") + " .card-name")).perform()
+        run.wait(lambda: run.js("return !!document.querySelector('.card-rename')"), what="inline rename field")
+        run.js("""
+            const i = document.querySelector('.card-rename'); i.value = 'Draft Two';
+            i.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+        """)
+        run.wait(lambda: (workdir / "Draft Two.printfold").exists(), what="inline rename")
+        run.wait(lambda: "Draft Two" in cards(), what="renamed card")
+
+        # Delete with the keyboard (confirmation dialog)
+        run.click(card_selector("Draft Two") + " .card-thumb")
+        run.js("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Backspace', bubbles: true}))")
+        run.wait(lambda: run.visible("#modal-confirm"), what="delete confirmation")
+        run.click("#modal-confirm")
+        run.wait(lambda: not (workdir / "Draft Two.printfold").exists(), what="delete")
+        run.wait(lambda: cards() == ["Field Guide"], what="card removed")
+
+        # Drop a .printfold onto the browser to import it
+        import base64
+        payload = base64.b64encode(project.read_bytes()).decode()
+        run.js("""
+            const bytes = Uint8Array.from(atob(arguments[0]), c => c.charCodeAt(0));
+            const dt = new DataTransfer();
+            dt.items.add(new File([bytes], 'Dropped.printfold'));
+            const root = document.getElementById('welcome-screen');
+            for (const type of ['dragenter', 'dragover', 'drop']) {
+                root.dispatchEvent(new DragEvent(type, {dataTransfer: dt, bubbles: true, cancelable: true}));
+            }
+        """, payload)
+        run.wait(lambda: (workdir / "Dropped.printfold").exists(), what="drop import")
+        run.wait(lambda: "Dropped" in cards(), what="dropped card")
+        log(f"browser operations ok: {sorted(cards())}")
+
+        # Open by double-clicking the card
+        ActionChains(run.driver).double_click(
+            run.driver.find_element(By.CSS_SELECTOR, card_selector("Field Guide") + " .card-thumb")).perform()
         run.wait(lambda: not run.visible("#welcome-screen"), what="reopened editor")
         run.wait(lambda: int(run.text("#info-pages") or 0) >= 8, timeout=60, what="reflow after reopen")
         log(f"pages after reopen: {run.text('#info-pages')}")

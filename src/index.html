@@ -10,22 +10,33 @@
   <script type="module" src="./index.ts"></script>
 </head>
 <body>
-  <!-- Welcome / Startup screen (file-first flow) -->
-  <div id="welcome-screen" class="welcome-screen hidden">
-    <div class="welcome-card">
-      <div class="welcome-hero">
-        <h1>PrintFold</h1>
+  <!-- Project browser (start screen): the project library as a grid -->
+  <div id="welcome-screen" class="project-browser hidden">
+    <header class="browser-header" data-tauri-drag-region>
+      <h1 data-tauri-drag-region>Projects</h1>
+      <input id="browser-search" class="browser-search" type="search" placeholder="Search" aria-label="Search projects" autocomplete="off" />
+      <div class="browser-header-actions">
+        <button id="browser-select" class="btn btn-secondary browser-select-btn">Select</button>
+        <button id="browser-import" class="btn btn-secondary">Open…</button>
+        <button id="browser-new" class="btn btn-primary">New Project</button>
       </div>
-      <div class="welcome-actions">
-        <button id="welcome-new" class="btn btn-primary">New Project</button>
-        <button id="welcome-open" class="btn btn-secondary">Open Project</button>
-      </div>
-      <div class="welcome-recents">
-        <h3>Recent Projects</h3>
-        <div id="welcome-recents-list"></div>
-        <p id="welcome-recents-empty">No recent projects yet. Create a new project to get started.</p>
-      </div>
+    </header>
+    <div id="browser-toolbar" class="browser-toolbar" role="toolbar" aria-label="Selected projects">
+      <span id="browser-count" class="browser-count"></span>
+      <button class="btn btn-secondary" data-browser-action="open">Open</button>
+      <button class="btn btn-secondary" data-browser-action="rename">Rename</button>
+      <button class="btn btn-secondary" data-browser-action="duplicate">Duplicate</button>
+      <button class="btn btn-secondary" data-browser-action="share">Share…</button>
+      <button class="btn btn-secondary" data-browser-action="reveal">Show in Finder</button>
+      <button class="btn btn-danger" data-browser-action="delete">Delete</button>
     </div>
+    <div id="browser-grid" class="browser-grid" role="listbox" aria-multiselectable="true" tabindex="0"></div>
+    <p id="browser-empty" class="browser-empty" hidden></p>
+    <footer class="browser-footer">
+      Projects are saved in <span id="browser-location"></span>
+      <button id="browser-reveal" class="btn-link" hidden>Show in Finder</button>
+    </footer>
+    <div class="browser-drop-hint" aria-hidden="true">Drop .printfold files to add them</div>
   </div>
 
   <div id="app">
@@ -35,10 +46,10 @@
         <span class="logo">📖</span>
         <h1>PrintFold</h1>
       </div>
-      <span id="project-name-display" class="project-name-display"></span>
+      <button id="project-name-display" class="project-name-display" title="Rename project"></button>
       <div class="header-actions">
         <span id="save-status" class="save-status" aria-live="polite"></span>
-        <button id="btn-welcome" class="btn btn-secondary" title="Open the welcome screen">Projects…</button>
+        <button id="btn-welcome" class="btn btn-secondary" title="Back to all projects (⌘⇧O)">Projects</button>
         <button id="btn-export" class="btn btn-primary">Export PDF</button>
       </div>
     </header>

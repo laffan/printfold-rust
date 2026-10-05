@@ -8,6 +8,12 @@ import { AppState } from './AppStateCore';
 // Page items (for static pages)
 AppState.prototype.addItemToPage = function(pageNumber: number, item: PageItem): void {
   const prevState = this.getProject();
+  const isTextFlow = item.type === 'textFlow';
+  if (isTextFlow) {
+    // Pasted/duplicated regions must not show the source's flowed text;
+    // the reflow below gives them their own slice of the flow.
+    item = { ...item, flowedSections: undefined, flowedPolygonLines: undefined } as PageItem;
+  }
 
   // Find which spread and position (verso/recto) contains this page
   let targetSpreadId: string | null = null;
@@ -75,6 +81,11 @@ AppState.prototype.addItemToPage = function(pageNumber: number, item: PageItem):
 
   this.setProject({ ...prevState, signatures, staticSpreads });
   this.notifyProjectListeners(prevState);
+
+  // A new text-flow region (added, pasted or duplicated) takes part in the flow.
+  if (isTextFlow) {
+    this.requestReflow();
+  }
 };
 
 AppState.prototype.updateItemOnPage = function(pageNumber: number, itemId: string, updates: Partial<PageItem>): void {

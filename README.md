@@ -14,21 +14,22 @@ for the feature-by-feature comparison.
 
 ## Getting Started
 
-On launch, PrintFold shows a welcome screen with **New Project**,
-**Open Project**, and a list of recent projects. A project must be
-created or opened before the editor opens — every change is then
-auto-saved to that file.
+PrintFold opens on the **project browser**: a grid of cover thumbnails of
+your projects. Create a project with **New Project** and it opens in the
+editor; every change is auto-saved. Back in the browser you can open,
+rename, duplicate, share, delete and import projects, or drop
+`.printfold` files onto it.
 
-Projects are stored as `.printfold` files (a ZIP archive with a custom
-extension). Switch projects at any time via the **Projects…** button in
-the header (or File › Projects…, ⌘⇧O).
+Projects are `.printfold` files (a ZIP archive with a custom extension),
+kept in a projects folder:
 
-- **macOS**: PrintFold registers itself as the owner of `.printfold`
-  files, so double-clicking one in Finder opens it.
-- **iPadOS**: projects live in *Files › On My iPad › PrintFold*; exports
-  are offered through the system Save to Files sheet. Touch, Pencil,
-  pinch zoom and press-and-hold menus are supported. See
-  [docs/ipados.md](docs/ipados.md).
+- **macOS**: `~/Documents/PrintFold`. **Open…** also opens projects from
+  any other folder, and PrintFold owns the `.printfold` type, so
+  double-clicking one in Finder opens it.
+- **iPadOS**: *Files › On My iPad › PrintFold*. Exports and sharing go
+  through the system share sheet (Save to Files, AirDrop, Print …).
+  Touch, Pencil, mouse, trackpad and keyboard shortcuts are supported.
+  See [docs/ipados.md](docs/ipados.md).
 
 ## Building
 

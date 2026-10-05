@@ -125,6 +125,7 @@ fn text_flow_region_receives_content() {
     let ps = pages(&res.signatures);
     let p2 = ps.iter().find(|p| p.page_number == 2).unwrap();
     let items = p2.items();
+    assert!(p2.sections.is_empty(), "static page carries no flowed sections of its own: {}", p2.sections.len());
     assert!(!items[0].flowed_sections.as_ref().unwrap().is_empty(), "square region filled");
     assert!(!items[1].flowed_polygon_lines.as_ref().unwrap().is_empty(), "polygon region filled");
     // Polygon lines stay inside the triangle: narrower near the apex.

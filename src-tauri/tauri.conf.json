@@ -50,7 +50,7 @@
         "mimeType": "application/x-printfold",
         "exportedType": {
           "identifier": "com.printfold.project",
-          "conformsTo": ["public.data", "public.zip-archive"]
+          "conformsTo": ["public.data", "public.content"]
         }
       }
     ],

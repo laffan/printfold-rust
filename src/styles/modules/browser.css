@@ -1,0 +1,324 @@
+/* Project browser (start screen): the project library as a grid */
+
+.project-browser {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.project-browser.hidden {
+  display: none;
+}
+
+/* When the browser is up, hide the editor so it can't be reached through it. */
+body.welcome-active .app-header,
+body.welcome-active .app-main {
+  visibility: hidden;
+}
+
+.browser-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px 12px;
+  -webkit-app-region: drag;
+}
+
+/* macOS overlay title bar: leave room for the traffic lights. */
+[data-platform="macos"] .browser-header {
+  padding-top: 28px;
+}
+
+.browser-header h1 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-right: auto;
+}
+
+.browser-search {
+  width: 220px;
+  max-width: 30vw;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+  font: inherit;
+  -webkit-app-region: no-drag;
+}
+
+.browser-search:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.browser-header-actions {
+  display: flex;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.browser-header-actions .btn {
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+/* "Select" is for touch screens; with a pointer, ⌘/Shift-click select. */
+.browser-select-btn {
+  display: none;
+}
+
+@media (hover: none) {
+  .browser-select-btn {
+    display: inline-flex;
+  }
+}
+
+/* Selection toolbar */
+.browser-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 24px;
+  padding: 0 12px;
+  height: 0;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-secondary);
+  transition: height 0.15s ease, margin 0.15s ease;
+}
+
+.browser-toolbar.active {
+  height: 44px;
+  margin-bottom: 8px;
+}
+
+.browser-toolbar .btn {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.browser-toolbar .btn[hidden] {
+  display: none;
+}
+
+.browser-count {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* Grid */
+.browser-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  align-content: start;
+  gap: 28px 20px;
+  padding: 12px 24px 24px;
+  overflow-y: auto;
+  outline: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.project-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: var(--radius-lg);
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  outline: none;
+}
+
+.project-card.selected {
+  background: rgba(74, 158, 255, 0.16);
+}
+
+.card-thumb {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-page {
+  max-width: 100%;
+  max-height: 100%;
+  background: var(--color-page);
+  border-radius: 2px;
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  display: flex;
+}
+
+.card-page img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* No thumbnail yet: a blank page with faint text lines. */
+.card-page.placeholder {
+  width: 75%;
+  height: 100%;
+  background:
+    repeating-linear-gradient(to bottom, transparent 0 10px, #e6e6e6 10px 12px) 18% 22% / 64% 56% no-repeat,
+    var(--color-page);
+}
+
+.project-card.selected .card-page {
+  box-shadow: 0 0 0 3px var(--color-primary), var(--shadow-md);
+}
+
+.card-more {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(30, 30, 30, 0.75);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.project-card:hover .card-more,
+.project-card.selected .card-more {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .card-more {
+    opacity: 1;
+  }
+}
+
+.card-name {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-rename {
+  width: 100%;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-primary);
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+  font: inherit;
+  text-align: center;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.card-meta {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-location {
+  color: var(--color-text-secondary);
+}
+
+/* Touch "Select" mode: tapping toggles selection. */
+.project-browser.select-mode .project-card {
+  cursor: pointer;
+}
+
+.browser-empty {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.browser-empty[hidden] {
+  display: none;
+}
+
+.browser-footer {
+  padding: 10px 24px 16px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  border-top: 1px solid var(--color-border);
+}
+
+#browser-location {
+  color: var(--color-text-secondary);
+}
+
+.btn-link {
+  margin-left: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn-link[hidden] {
+  display: none;
+}
+
+/* Drag-and-drop of .printfold files */
+.browser-drop-hint {
+  position: absolute;
+  inset: 12px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--color-primary);
+  border-radius: var(--radius-lg);
+  background: rgba(74, 158, 255, 0.08);
+  color: var(--color-primary);
+  font-size: 15px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.project-browser.drop-target .browser-drop-hint {
+  display: flex;
+}
+
+/* Narrow windows (iPad portrait, Split View) */
+@media (max-width: 700px) {
+  .browser-header {
+    flex-wrap: wrap;
+  }
+
+  .browser-search {
+    order: 3;
+    width: 100%;
+    max-width: none;
+  }
+
+  .browser-grid {
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+    gap: 20px 12px;
+    padding: 8px 16px 16px;
+  }
+}

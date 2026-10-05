@@ -819,6 +819,11 @@ export interface RenderPageOptions {
   includeBackground?: boolean;
   /** Draw only the background (no items, no text). */
   backgroundOnly?: boolean;
+  /** Pixels per point (default: 300 DPI). */
+  scale?: number;
+  /** Start from a white page and always render, even when it is empty
+   *  (project thumbnails). */
+  opaque?: boolean;
 }
 
 export async function renderPageToImage(
@@ -841,15 +846,18 @@ export async function renderPageToImage(
     }
   });
   const hasItems = !backgroundOnly && (hasOwnItems || hasCrossingItems);
-  const hasTextContent = includeTextContent && page.sections && page.sections.length > 0;
+  // Only text pages own flowed text (as in the editor); static and available
+  // pages may still carry leftover sections from an earlier flow.
+  const hasTextContent = includeTextContent && page.pageState === 'text' && page.sections && page.sections.length > 0;
 
   const hasBackground = includeBackground && (!!page.backgroundFill || !!page.customBackgroundImageId);
-  if (!hasItems && !hasBackground && !hasTextContent) {
+  if (!hasItems && !hasBackground && !hasTextContent && !options.opaque) {
     return null;
   }
 
-  const scaledWidth = Math.round(pageWidth * SCALE_FACTOR);
-  const scaledHeight = Math.round(pageHeight * SCALE_FACTOR);
+  const SCALE = options.scale ?? SCALE_FACTOR;
+  const scaledWidth = Math.round(pageWidth * SCALE);
+  const scaledHeight = Math.round(pageHeight * SCALE);
 
   // Create a temporary container
   const container = document.createElement('div');
@@ -870,6 +878,10 @@ export async function renderPageToImage(
     stage.add(layer);
 
     const imageLoadPromises: Promise<void>[] = [];
+
+    if (options.opaque) {
+      layer.add(new Konva.Rect({ x: 0, y: 0, width: scaledWidth, height: scaledHeight, fill: '#ffffff' }));
+    }
 
     // Draw background if present
     if (includeBackground && page.backgroundFill) {
@@ -904,8 +916,8 @@ export async function renderPageToImage(
     }
 
     // Render text content if requested (for "render text as images" mode)
-    if (includeTextContent && page.sections && page.sections.length > 0) {
-      renderTextContent(layer, page, pageWidth, pageHeight, SCALE_FACTOR);
+    if (hasTextContent) {
+      renderTextContent(layer, page, pageWidth, pageHeight, SCALE);
     }
 
     // Render page items (including array instances)
@@ -914,7 +926,7 @@ export async function renderPageToImage(
         // Text-flow items have multi-node content (one Konva.Text per flowed
         // line) so they don't fit createRenderNode's single-node model.
         if (item.type === 'textFlow') {
-          renderTextFlowItem(layer, item as TextFlowPageItem, 0, SCALE_FACTOR);
+          renderTextFlowItem(layer, item as TextFlowPageItem, 0, SCALE);
           continue;
         }
 
@@ -923,9 +935,9 @@ export async function renderPageToImage(
 
         if (totalInstances <= 1) {
           // No array - render single item
-          const node = createRenderNode(item, 0, SCALE_FACTOR, imageLoadPromises);
+          const node = createRenderNode(item, 0, SCALE, imageLoadPromises);
           if (node) {
-            applyItemShadow(node, item, SCALE_FACTOR);
+            applyItemShadow(node, item, SCALE);
             layer.add(node);
           }
         } else {
@@ -941,9 +953,9 @@ export async function renderPageToImage(
               arrayDimensions: undefined, // Don't recurse
             } as PageItem;
 
-            const node = createRenderNode(instanceItem, 0, SCALE_FACTOR, imageLoadPromises);
+            const node = createRenderNode(instanceItem, 0, SCALE, imageLoadPromises);
             if (node) {
-              applyItemShadow(node, item, SCALE_FACTOR);
+              applyItemShadow(node, item, SCALE);
               layer.add(node);
             }
           }
@@ -972,9 +984,9 @@ export async function renderPageToImage(
 
         if (totalInstances <= 1) {
           // No array - render single item
-          const node = createRenderNode(item, offsetX, SCALE_FACTOR, imageLoadPromises);
+          const node = createRenderNode(item, offsetX, SCALE, imageLoadPromises);
           if (node) {
-            applyItemShadow(node, item, SCALE_FACTOR);
+            applyItemShadow(node, item, SCALE);
             layer.add(node);
           }
         } else {
@@ -989,9 +1001,9 @@ export async function renderPageToImage(
               arrayDimensions: undefined,
             } as PageItem;
 
-            const node = createRenderNode(instanceItem, offsetX, SCALE_FACTOR, imageLoadPromises);
+            const node = createRenderNode(instanceItem, offsetX, SCALE, imageLoadPromises);
             if (node) {
-              applyItemShadow(node, item, SCALE_FACTOR);
+              applyItemShadow(node, item, SCALE);
               layer.add(node);
             }
           }

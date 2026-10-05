@@ -35,16 +35,30 @@ export interface FamilyVariants {
   boldItalic: boolean;
 }
 
-export interface RecentEntry {
-  id: string;
-  name: string;
-  path: string;
-  lastOpened: number;
-}
-
 export interface ProjectLocation {
   name: string;
   path: string;
+}
+
+export interface LibraryInfo {
+  path: string;
+  /** Human-readable location, e.g. "On My iPad › PrintFold". */
+  display: string;
+  canReveal: boolean;
+  /** Deleting moves projects to the Trash (macOS). */
+  usesTrash: boolean;
+}
+
+export interface LibraryEntry {
+  path: string;
+  /** File name without extension. */
+  name: string;
+  fileName: string;
+  /** Last modification (ms since epoch). */
+  modified: number;
+  size: number;
+  /** False for recent projects stored outside the library folder (macOS). */
+  inLibrary: boolean;
 }
 
 export interface StaticPageData {
@@ -195,22 +209,83 @@ export const bridge = {
     return invoke<PickedFile[]>('pick_files', { filters, multiple });
   },
 
-  /** Ask where to save `bytes` (macOS save panel / iPadOS "Save to Files"). */
-  saveFile(bytes: Uint8Array, fileName: string, filter: FileFilter): Promise<boolean> {
-    return invoke<boolean>('save_file', bytes, {
-      headers: {
-        'x-file-name': headerValue(fileName),
-        'x-filter-name': headerValue(filter.name),
-        'x-filter-ext': headerValue(filter.extensions.join(',')),
-      },
-    });
+  /**
+   * Save `bytes`: macOS save panel; iPadOS share sheet (Save to Files,
+   * AirDrop, Print …) anchored at `anchor` (webview coordinates).
+   */
+  saveFile(bytes: Uint8Array, fileName: string, filter: FileFilter, anchor?: { x: number; y: number }): Promise<boolean> {
+    const headers: Record<string, string> = {
+      'x-file-name': headerValue(fileName),
+      'x-filter-name': headerValue(filter.name),
+      'x-filter-ext': headerValue(filter.extensions.join(',')),
+    };
+    if (anchor) headers['x-anchor'] = `${Math.round(anchor.x)},${Math.round(anchor.y)}`;
+    return invoke<boolean>('save_file', bytes, { headers });
+  },
+
+  // ---------------------------------------------------------------- library
+
+  libraryInfo(): Promise<LibraryInfo> {
+    return invoke<LibraryInfo>('library_info');
+  },
+
+  libraryList(): Promise<LibraryEntry[]> {
+    return invoke<LibraryEntry[]>('library_list');
+  },
+
+  /** Cover thumbnail PNG (empty when the project has none). */
+  async libraryThumbnail(path: string): Promise<Uint8Array> {
+    return toBytes(await invoke<ArrayBuffer>('library_thumbnail', { path }));
+  },
+
+  /** Create an empty project in the library and bind it for auto-save. */
+  libraryCreate(name?: string): Promise<ProjectLocation> {
+    return invoke<ProjectLocation>('library_create', { name: name ?? null });
+  },
+
+  libraryRename(path: string, name: string): Promise<ProjectLocation> {
+    return invoke<ProjectLocation>('library_rename', { path, name });
+  },
+
+  libraryDuplicate(path: string): Promise<ProjectLocation> {
+    return invoke<ProjectLocation>('library_duplicate', { path });
+  },
+
+  libraryDelete(paths: string[]): Promise<void> {
+    return invoke('library_delete', { paths });
+  },
+
+  /** Remove an outside-the-library project from the recents list. */
+  libraryForget(path: string): Promise<void> {
+    return invoke('library_forget', { path });
+  },
+
+  /** Pick `.printfold` files and copy them into the library. */
+  libraryImport(): Promise<ProjectLocation[]> {
+    return invoke<ProjectLocation[]>('library_import');
+  },
+
+  /** Add a dropped `.printfold` file to the library. */
+  libraryImportBytes(bytes: Uint8Array, fileName: string): Promise<ProjectLocation> {
+    return invoke<ProjectLocation>('library_import_bytes', bytes, { headers: { 'x-file-name': headerValue(fileName) } });
+  },
+
+  /** Share sheet (iPadOS) / sharing picker (macOS), anchored at x, y. */
+  libraryShare(path: string, x: number, y: number): Promise<void> {
+    return invoke('library_share', { path, x, y });
+  },
+
+  /** Show a project (or the library folder) in Finder. */
+  libraryReveal(path?: string): Promise<void> {
+    return invoke('library_reveal', { path: path ?? null });
+  },
+
+  /** Cover thumbnail embedded in the open project on its next save. */
+  projectSetThumbnail(png: Uint8Array): Promise<void> {
+    return invoke('project_set_thumbnail', png);
   },
 
   // --------------------------------------------------------------- projects
-
-  projectNew(name: string): Promise<ProjectLocation | null> {
-    return invoke<ProjectLocation | null>('project_new', { name });
-  },
 
   projectOpenDialog(): Promise<OpenedProject | null> {
     return invoke<OpenedProject | null>('project_open_dialog');
@@ -242,20 +317,6 @@ export const bridge = {
 
   projectClose(): Promise<void> {
     return invoke('project_close');
-  },
-
-  // ---------------------------------------------------------------- recents
-
-  recentsList(): Promise<RecentEntry[]> {
-    return invoke<RecentEntry[]>('recents_list');
-  },
-
-  recentsAdd(path: string, name: string): Promise<void> {
-    return invoke('recents_add', { path, name });
-  },
-
-  recentsRemove(path: string): Promise<void> {
-    return invoke('recents_remove', { path });
   },
 
   // -------------------------------------------------------------------- PDF

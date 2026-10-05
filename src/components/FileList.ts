@@ -5,6 +5,8 @@
 
 import { appState } from '../services/state';
 import { env } from '../services/environment';
+import { showAlert } from '../services/dialogs';
+import { importDroppedFiles, normalizePickedFiles, PICKER_EXTENSIONS, skippedMessage, type DropImport } from '../services/fileImport';
 import type { ProjectFile } from '../types';
 
 export class FileList {
@@ -49,104 +51,32 @@ export class FileList {
       });
     });
 
-    // Handle dropped files
+    // Handle dropped files (Finder, Files, Photos …)
     this.container.addEventListener('drop', async (e) => {
       const dt = (e as DragEvent).dataTransfer;
-      if (!dt) return;
-
-      const files = await this.processDroppedFiles(dt.files);
-      if (files.length > 0) {
-        appState.addFiles(files);
-      }
+      if (!dt || dt.files.length === 0) return;
+      this.addImported(await importDroppedFiles(dt.files));
     });
   }
 
   private setupAddButton(): void {
     const btn = document.getElementById('btn-add-files');
     btn?.addEventListener('click', () => {
-      this.openFileDialog();
+      void this.openFileDialog();
     });
   }
 
   private async openFileDialog(): Promise<void> {
     const files = await env.openFiles({
-      filters: [
-        { name: 'Supported Files', extensions: ['md', 'png', 'jpg', 'jpeg', 'webp', 'ttf', 'otf', 'woff'] },
-      ],
+      filters: [{ name: 'Supported Files', extensions: PICKER_EXTENSIONS }],
       multiple: true,
     });
-
-    if (files) {
-      appState.addFiles(files);
-    }
+    if (files) this.addImported(await normalizePickedFiles(files));
   }
 
-  private async processDroppedFiles(droppedFiles: globalThis.FileList): Promise<ProjectFile[]> {
-    const files: ProjectFile[] = [];
-    const allowedExtensions = ['md', 'png', 'jpg', 'jpeg', 'webp', 'ttf', 'otf', 'woff'];
-
-    for (const file of Array.from(droppedFiles) as File[]) {
-      const ext = file.name.split('.').pop()?.toLowerCase() || '';
-
-      if (!allowedExtensions.includes(ext)) {
-        console.warn(`Skipping unsupported file: ${file.name}`);
-        continue;
-      }
-
-      const isText = ext === 'md';
-      const content = await this.readFile(file, isText);
-
-      files.push({
-        id: crypto.randomUUID(),
-        name: file.name,
-        type: this.getFileType(ext),
-        content,
-        isBase64: !isText,
-        lastModified: file.lastModified,
-      });
-    }
-
-    return files;
-  }
-
-  private readFile(file: File, asText: boolean): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (asText) {
-          resolve(reader.result as string);
-        } else {
-          const dataUrl = reader.result as string;
-          const base64 = dataUrl.split(',')[1];
-          resolve(base64);
-        }
-      };
-      reader.onerror = reject;
-
-      if (asText) {
-        reader.readAsText(file);
-      } else {
-        reader.readAsDataURL(file);
-      }
-    });
-  }
-
-  private getFileType(ext: string): ProjectFile['type'] {
-    switch (ext) {
-      case 'md':
-        return 'markdown';
-      case 'png':
-      case 'jpg':
-      case 'jpeg':
-      case 'webp':
-        return 'image';
-      case 'ttf':
-      case 'otf':
-      case 'woff':
-        return 'font';
-      default:
-        return 'unknown';
-    }
+  private addImported(result: DropImport): void {
+    if (result.files.length > 0) appState.addFiles(result.files);
+    if (result.skipped.length > 0) void showAlert(skippedMessage(result.skipped));
   }
 
   private setupStateListener(): void {

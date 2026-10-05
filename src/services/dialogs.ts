@@ -91,3 +91,33 @@ export function showPrompt(heading: string, label: string, initial = '', okLabel
     }, 50);
   });
 }
+
+/** Ask for confirmation; resolves to true when confirmed. */
+export function showConfirm(heading: string, message: string, okLabel = 'OK', destructive = false): Promise<boolean> {
+  const parts = modalParts();
+  if (!parts) return Promise.resolve(false);
+  const { overlay, title, content, confirm, cancel, close } = parts;
+  title.textContent = heading;
+  content.innerHTML = `<p class="modal-message">${escapeHtml(message)}</p>`;
+  confirm.textContent = okLabel;
+  confirm.classList.toggle('btn-danger', destructive);
+  overlay.classList.remove('hidden');
+  return new Promise(resolve => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') finish(false);
+      if (e.key === 'Enter') finish(true);
+    };
+    const finish = (value: boolean) => {
+      document.removeEventListener('keydown', onKey, true);
+      overlay.classList.add('hidden');
+      confirm.textContent = 'OK';
+      confirm.classList.remove('btn-danger');
+      resolve(value);
+    };
+    confirm.addEventListener('click', () => finish(true), { once: true });
+    cancel.addEventListener('click', () => finish(false), { once: true });
+    close?.addEventListener('click', () => finish(false), { once: true });
+    document.addEventListener('keydown', onKey, true);
+    confirm.focus();
+  });
+}

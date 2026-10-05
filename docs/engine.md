@@ -93,7 +93,8 @@ WebKit's behaviour:
 `TextFlowEngine.reflow`:
 
 1. **Capture static pages** from the current signatures (`static`, or
-   `available` pages that carry items). They are kept as-is.
+   `available` pages that carry items). They are kept as-is, minus any
+   flowed text left over from when they were text pages.
 2. **Parse** the markdown; when footnotes are shown as endnotes, append
    endnote sections (document) or inject them after each chapter.
 3. **Flow**:
@@ -141,6 +142,8 @@ images/<name>       image files (binary)
 fonts/<name>        font files (binary)
 static/page-N.json  StaticPageData: pageState, items, backgroundFill,
                     customBackgroundImageId
+preview/thumbnail   cover PNG for the project browser (no extension, so
+                    image importers — including the original app's — skip it)
 ```
 
 Older archives load: a missing `pageState` means `static`, and missing

@@ -59,6 +59,21 @@ pub fn documents_dir<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
     Some(dir)
 }
 
+/// The project library shown in the project browser: the app's Documents
+/// folder on iPadOS (visible in the Files app), `~/Documents/PrintFold`
+/// elsewhere. The E2E hook folder replaces it in tests.
+pub fn library_dir<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
+    if let Some(dir) = e2e_dir() {
+        return Some(dir);
+    }
+    if cfg!(mobile) {
+        return documents_dir(app);
+    }
+    let dir = app.path().document_dir().ok()?.join("PrintFold");
+    fs::create_dir_all(&dir).ok()?;
+    Some(dir)
+}
+
 /// A path in `dir` named `stem.ext`, adding " 2", " 3"… if it exists.
 pub fn unique_path(dir: &Path, stem: &str, ext: &str) -> PathBuf {
     let clean: String = stem.chars().map(|c| if matches!(c, '/' | '\\' | ':') { '-' } else { c }).collect();
@@ -129,40 +144,20 @@ pub fn add_recent<R: Runtime>(app: &AppHandle<R>, path: &Path, name: &str) {
     write_recents(app, &entries);
 }
 
+/// Keep a recent entry (and its position) when its file is renamed.
+pub fn rename_recent<R: Runtime>(app: &AppHandle<R>, from: &Path, to: &Path) {
+    let from = from.to_string_lossy();
+    let mut entries = read_recents(app);
+    if let Some(e) = entries.iter_mut().find(|e| e.path == from) {
+        e.path = to.to_string_lossy().into_owned();
+        e.name = file_name(to);
+        write_recents(app, &entries);
+    }
+}
+
 pub fn remove_recent<R: Runtime>(app: &AppHandle<R>, path: &str) {
     let entries: Vec<RecentEntry> = read_recents(app).into_iter().filter(|e| e.path != path).collect();
     write_recents(app, &entries);
-}
-
-/// Recents whose files still exist. On iPadOS every project in the
-/// Documents folder is listed too (newest first), so projects copied in via
-/// the Files app show up without being opened first.
-pub fn list_recents<R: Runtime>(app: &AppHandle<R>) -> Vec<RecentEntry> {
-    let mut out: Vec<RecentEntry> = read_recents(app).into_iter().filter(|e| Path::new(&e.path).exists()).collect();
-    if cfg!(target_os = "ios") {
-        if let Some(dir) = documents_dir(app) {
-            if let Ok(read) = fs::read_dir(&dir) {
-                for entry in read.flatten() {
-                    let path = entry.path();
-                    let is_project = path.extension().map(|e| e.eq_ignore_ascii_case(PROJECT_EXT)).unwrap_or(false);
-                    let key = path.to_string_lossy().to_string();
-                    if !is_project || out.iter().any(|e| e.path == key) {
-                        continue;
-                    }
-                    let modified = entry
-                        .metadata()
-                        .and_then(|m| m.modified())
-                        .ok()
-                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                        .map(|d| d.as_millis() as f64)
-                        .unwrap_or(0.0);
-                    out.push(RecentEntry { id: key.clone(), name: file_name(&path), path: key, last_opened: modified });
-                }
-            }
-        }
-        out.sort_by(|a, b| b.last_opened.partial_cmp(&a.last_opened).unwrap_or(std::cmp::Ordering::Equal));
-    }
-    out
 }
 
 #[cfg(test)]

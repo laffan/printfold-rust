@@ -27,6 +27,10 @@ use crate::model::{
 pub const MANIFEST_FILENAME: &str = "project.json";
 pub const LEGACY_MANIFEST_FILENAME: &str = "printfold.json";
 pub const FORMAT_VERSION: &str = "2.1.0";
+/// Cover thumbnail (PNG) shown in the project browser. Stored without an
+/// extension so importers that pick up images by extension (including the
+/// original app's) ignore it.
+pub const THUMBNAIL_PATH: &str = "preview/thumbnail";
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProjectFileError {
@@ -172,6 +176,15 @@ pub fn export_project(
     project: &ProjectExport,
     binary: &dyn Fn(&str) -> Option<Vec<u8>>,
 ) -> Result<Vec<u8>, ProjectFileError> {
+    export_project_with_thumbnail(project, binary, None)
+}
+
+/// Serialise a project, embedding a cover thumbnail (PNG) when given.
+pub fn export_project_with_thumbnail(
+    project: &ProjectExport,
+    binary: &dyn Fn(&str) -> Option<Vec<u8>>,
+    thumbnail: Option<&[u8]>,
+) -> Result<Vec<u8>, ProjectFileError> {
     let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
     let deflate = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     let store = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
@@ -230,7 +243,22 @@ pub fn export_project(
     zip.start_file(MANIFEST_FILENAME, deflate)?;
     zip.write_all(serde_json::to_string_pretty(&manifest)?.as_bytes())?;
 
+    if let Some(png) = thumbnail.filter(|b| !b.is_empty()) {
+        zip.start_file(THUMBNAIL_PATH, store)?;
+        zip.write_all(png)?;
+    }
+
     Ok(zip.finish()?.into_inner())
+}
+
+/// Read the embedded cover thumbnail from a `.printfold` archive, if any.
+/// Only the archive's directory and that entry are read.
+pub fn read_thumbnail<R: Read + std::io::Seek>(reader: R) -> Option<Vec<u8>> {
+    let mut archive = zip::ZipArchive::new(reader).ok()?;
+    let mut entry = archive.by_name(THUMBNAIL_PATH).ok()?;
+    let mut data = Vec::new();
+    entry.read_to_end(&mut data).ok()?;
+    (!data.is_empty()).then_some(data)
 }
 
 /// Decode `.printfold` bytes.
@@ -252,7 +280,7 @@ pub fn import_project(bytes: &[u8]) -> Result<ProjectImport, ProjectFileError> {
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
         let path = entry.name().to_string();
-        if entry.is_dir() || path == MANIFEST_FILENAME || path == LEGACY_MANIFEST_FILENAME {
+        if entry.is_dir() || path == MANIFEST_FILENAME || path == LEGACY_MANIFEST_FILENAME || path.starts_with("preview/") {
             continue;
         }
         let parts: Vec<&str> = path.split('/').collect();
@@ -369,6 +397,17 @@ mod tests {
         assert_eq!(imported.static_pages.len(), 1);
         assert_eq!(imported.static_pages[0].page_number, 2);
         assert_eq!(imported.static_pages[0].items[0].id, "i1");
+    }
+
+    #[test]
+    fn thumbnail_round_trip_is_not_a_project_file() {
+        let png = b"\x89PNG fake".to_vec();
+        let bytes = export_project_with_thumbnail(&sample(), &|_| None, Some(&png)).unwrap();
+        assert_eq!(read_thumbnail(Cursor::new(&bytes)), Some(png));
+        let imported = import_project(&bytes).unwrap();
+        assert!(imported.files.iter().all(|f| !f.name.contains("thumbnail")));
+        let plain = export_project(&sample(), &|_| None).unwrap();
+        assert_eq!(read_thumbnail(Cursor::new(&plain)), None);
     }
 
     #[test]

@@ -18,7 +18,7 @@ Module documentation:
 |------|----------|
 | Rust engine: parsing, fonts, text flow, imposition, project format, PDF | [engine.md](engine.md) |
 | Tauri shell: commands (IPC), file handling, fonts, platforms | [platform.md](platform.md) |
-| UI orchestration | [App.md](App.md) |
+| UI orchestration, project browser, project session | [App.md](App.md) |
 | Spread editor (Konva) | [SpreadEditor.md](SpreadEditor.md) |
 | Options panel | [OptionsPanel.md](OptionsPanel.md) |
 | UI state | [state.md](state.md) |
@@ -33,7 +33,7 @@ Module documentation:
 
 ```
 ┌──────────────────────────── WebView (TypeScript, Vite) ───────────────────────────┐
-│  WelcomeScreen ─▶ App ─┬─ FileList / FilePreview (CodeMirror)                       │
+│  ProjectBrowser ◀▶ App ┬─ FileList / FilePreview (CodeMirror)                       │
 │                        ├─ SpreadEditor (Konva)      ─┐                              │
 │                        ├─ OptionsPanel               ├─ AppState (event emitter)    │
 │                        └─ PDFPreview (pdf.js)       ─┘                              │
@@ -41,10 +41,10 @@ Module documentation:
 └──────────────────────────────────────┬─────────────────────────────────────────────┘
                                         │ Tauri IPC (invoke / events, binary bodies)
 ┌──────────────────────────── src-tauri (Rust) ──────────────────────────────────────┐
-│  commands: reflow · pdf_* · project_* · file_* · fonts_* · recents_* · save_file    │
+│  commands: reflow · pdf_* · project_* · library_* · file_* · fonts_* · save_file    │
 │  state: font registry (system scan on startup) · binary file store · project path  │
-│  platform: atomic writes, recents, Documents folder (iPadOS), file associations,   │
-│            macOS menu bar, dialogs (tauri-plugin-dialog)                           │
+│  platform: atomic writes, project library, recents, file associations, macOS menu, │
+│            dialogs, share sheet (tauri-plugin-dialog / -opener / -sharekit)        │
 └──────────────────────────────────────┬─────────────────────────────────────────────┘
                                         │
 ┌──────────────────────────── crates/printfold-core (Rust) ──────────────────────────┐
@@ -98,17 +98,18 @@ crates/printfold-core/     Rust engine (no Tauri dependency, fully unit-tested)
   examples/parse_dump.rs   parser output for parity checks
 src-tauri/                 Tauri app
   src/commands/            files, fonts, layout, pdf, project, system
-  src/platform.rs          atomic writes, recents, Documents dir, E2E hooks
+  src/platform.rs          atomic writes, library folder, recents, E2E hooks
   src/menu.rs              macOS menu bar
   src/state.rs             AppState, FileStore, engine handle
   tauri.conf.json          window, bundle, .printfold file association
   Info.ios.plist           iPadOS Files-app sharing, orientations
 src/                       UI (TypeScript)
-  components/              App, WelcomeScreen, FileList, FilePreview,
-                           SpreadEditor/, OptionsPanel/, FillPicker/, PDFPreview
+  components/              App, projectSession, ProjectBrowser/, FileList,
+                           FilePreview, SpreadEditor/, OptionsPanel/,
+                           FillPicker/, PDFPreview
   services/                bridge, environment, projectIO, pdfExport,
                            pageRenderer, pageExport, pageGeometry, fontService,
-                           projectFile, recentProjects, dialogs, state/, text/
+                           fileImport, projectFile, dialogs, state/, text/
   styles/modules/          CSS (platform.css: macOS title bar, iPad touch)
 e2e/                       WebDriver end-to-end test (Linux/WebKitGTK)
 tools/parity/              parser parity check against the original app
@@ -160,8 +161,10 @@ generatePdf()  (src/services/pdfExport.ts)
 ### Saving
 
 ```
-project change → 600 ms debounce → invoke('project_save', project-without-blobs)
-  → printfold_core::project_file::export_project (blobs from the file store)
+project change → 600 ms debounce → (cover thumbnail, at most every 20 s)
+  → invoke('project_save', project-without-blobs)
+  → printfold_core::project_file::export_project_with_thumbnail
+    (blobs from the file store)
   → atomic write to the bound .printfold
 ```
 
@@ -169,28 +172,41 @@ project change → 600 ms debounce → invoke('project_save', project-without-bl
 
 ## Feature guide
 
-### Project files (`.printfold`)
+### Projects and the project browser
+
+PrintFold starts in the **project browser**, a grid of cover thumbnails of
+the projects in its library — `~/Documents/PrintFold` on macOS, the app's
+Documents folder (*On My iPad › PrintFold* in Files) on iPadOS. It works
+as a file manager: create, open, select (⌘/Shift-click, arrows), rename
+(inline), duplicate, share (share sheet / sharing picker), delete (Trash
+on macOS), import, search, and drop `.printfold` files onto it. On macOS,
+**Open…** opens projects from any folder in place; they appear in the
+browser afterwards. In the editor, click the project name to rename it;
+**Projects** (⌘⇧O) saves, closes and returns to the browser.
+
+Every change auto-saves (atomic writes). On macOS the app owns the
+`.printfold` type, so double-clicking a project opens it; on iPadOS the
+Files app hands `.printfold` files to PrintFold.
 
 A `.printfold` is a ZIP archive: `project.json` (manifest), `text/*.md`,
 `images/*`, `fonts/*`, `static/*.json` (per-page state, items,
-backgrounds). Files written by the original app open unchanged and files
-written by the port open in the original (same manifest version 2.1.0).
-
-Projects are file-first: the editor only opens once a project file exists,
-and every change auto-saves to it (atomic writes). The welcome screen lists
-recent projects; **Projects…** (or ⌘⇧O) returns to it. On macOS the app
-owns the `.printfold` type, so double-clicking a project opens it.
+backgrounds) and `preview/thumbnail` (cover PNG, stored without an
+extension so the original app ignores it). Files written by the original
+app open unchanged and files written by the port open in the original
+(same manifest version 2.1.0).
 
 ### Files area
 
 | Tab | Accepted files | Behaviour |
 |-----|----------------|-----------|
-| **Text** | `.md` | Concatenated in tab order; drag rows to reorder |
-| **Images** | `.png`, `.jpg`, `.jpeg`, `.webp` | Drag onto static pages (or use the image tool); page backgrounds; pattern fills; `![]()` images in the markdown |
+| **Text** | `.md` (also `.markdown`, `.txt`) | Concatenated in tab order; drag rows to reorder |
+| **Images** | `.png`, `.jpg`, `.jpeg`, `.webp` (HEIC, TIFF, BMP, GIF converted to JPEG) | Drag onto static pages (or use the image tool); page backgrounds; pattern fills; `![]()` images in the markdown |
 | **Fonts** | `.ttf`, `.otf`, `.woff` | Registered with WebKit and the Rust engine; listed first in every font menu |
 
-Files can be dropped onto the panel or added with **+**. Rows have edit and
-remove actions (always visible on touch screens). The preview pane edits
+Files can be dropped onto the panel (from Finder, Files, Photos …) or
+added with **+**; images can also be dropped straight onto a static or
+blank page. Rows have edit and remove actions (always visible on touch
+screens). The preview pane edits
 markdown (CodeMirror) and previews images and fonts.
 
 ### Static pages, items and text-flow regions
@@ -266,5 +282,6 @@ ORIG=../printfold tools/parity/run.sh   # parser parity vs the original
 | Wrap safety margin | 98% of width | `flow/measure.rs` |
 | Footnote reservation cap | 70% of content height | `flow/engine.rs` |
 | Pre-render resolution | 300 DPI | `services/pageRenderer.ts` |
-| Auto-save debounce | 600 ms | `components/App.ts` |
+| Auto-save debounce | 600 ms | `components/projectSession.ts` |
+| Thumbnail refresh / width | 20 s / 360 px | `components/projectSession.ts` |
 | Long press (touch context menu) | 500 ms | `SpreadEditor/pointer.ts` |

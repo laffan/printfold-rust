@@ -132,6 +132,8 @@ pub struct AppState {
     pub webview_ready: Mutex<bool>,
     /// Pre-rendered page PNGs for the next PDF generation.
     pub prerendered: Mutex<Prerendered>,
+    /// Cover thumbnail (PNG) embedded in the open project on save.
+    pub thumbnail: Mutex<Option<Vec<u8>>>,
 }
 
 impl AppState {
@@ -143,6 +145,7 @@ impl AppState {
             pending_opens: Mutex::new(Vec::new()),
             webview_ready: Mutex::new(false),
             prerendered: Mutex::new(Prerendered::default()),
+            thumbnail: Mutex::new(None),
         }
     }
 }

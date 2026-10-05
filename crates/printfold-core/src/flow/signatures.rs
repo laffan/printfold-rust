@@ -14,7 +14,12 @@ pub fn capture_static_pages(signatures: &[Signature]) -> BTreeMap<u32, PageConte
         let keep = page.page_state == PageState::Static
             || (page.page_state == PageState::Available && page.has_items());
         if keep {
-            preserved.insert(page.page_number, page.clone());
+            // Static and available pages own items and backgrounds only;
+            // drop flowed text left over from when they were text pages.
+            let mut page = page.clone();
+            page.sections.clear();
+            page.footnotes = None;
+            preserved.insert(page.page_number, page);
         }
     }
     preserved

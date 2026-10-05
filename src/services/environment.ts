@@ -35,6 +35,12 @@ function filterFor(fileName: string, filters?: FileFilter[]): FileFilter {
   return { name: names[ext] || 'File', extensions: ext ? [ext] : [] };
 }
 
+/** Where the user last pressed: anchors the iPadOS share popover for exports. */
+let lastPress: { x: number; y: number } | undefined;
+document.addEventListener('pointerdown', (e) => {
+  lastPress = { x: e.clientX, y: e.clientY };
+}, true);
+
 export const env = {
   /** Always true: the app runs inside the native Tauri shell. */
   isNative: true,
@@ -58,16 +64,16 @@ export const env = {
     }));
   },
 
-  /** Ask where to save and write the content. Returns false if cancelled. */
+  /** Save panel (macOS) / share sheet (iPadOS). Returns false if cancelled. */
   async saveFile(options: SaveFileOptions): Promise<boolean> {
     const name = options.defaultName || 'export';
     const bytes = typeof options.content === 'string' ? new TextEncoder().encode(options.content) : options.content;
-    return bridge.saveFile(bytes, name, filterFor(name, options.filters));
+    return bridge.saveFile(bytes, name, filterFor(name, options.filters), lastPress);
   },
 
   /** Save a generated file (PNG/SVG exports etc.) via the save dialog. */
   async downloadFile(filename: string, content: Uint8Array | Blob): Promise<void> {
     const bytes = content instanceof Blob ? new Uint8Array(await content.arrayBuffer()) : content;
-    await bridge.saveFile(bytes, filename, filterFor(filename));
+    await bridge.saveFile(bytes, filename, filterFor(filename), lastPress);
   },
 };

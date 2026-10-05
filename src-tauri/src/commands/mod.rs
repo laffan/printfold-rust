@@ -3,6 +3,7 @@
 pub mod files;
 pub mod fonts;
 pub mod layout;
+pub mod library;
 pub mod pdf;
 pub mod project;
 pub mod system;

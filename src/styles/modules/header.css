@@ -62,7 +62,23 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  pointer-events: none;
+  /* A button: click to rename the project. */
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.project-name-display:hover {
+  color: var(--color-text);
+  background: var(--color-bg-hover);
+}
+
+.project-name-display:empty {
+  display: none;
 }
 
 .save-status {

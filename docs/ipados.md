@@ -35,21 +35,54 @@ Remove the patch and the variable once a swift-rs release contains the
 change. If a build still fails after pulling these files, delete
 `target/aarch64-apple-ios` so the Swift packages are rebuilt.
 
-## Where files live
+## Projects
 
-| What | Location |
-|------|----------|
-| Projects (`.printfold`) | The app's Documents folder: **Files › On My iPad › PrintFold** |
-| Exported PDFs and PNGs | Written to the same folder, then the system export sheet opens so they can be saved elsewhere (cancelling keeps the copy) |
-| Recents | `recents.json` in app data; the welcome screen also lists every project in the Documents folder, so files copied there with the Files app show up |
+PrintFold starts in the **project browser**: a grid of cover thumbnails
+of every project in its library — the app's Documents folder, visible in
+the Files app as **On My iPad › PrintFold**.
 
-- **New Project** asks for a name and creates `Documents/<name>.printfold`
-  (`Name 2`, `Name 3` … if it exists).
-- **Open Project** uses the document picker. Projects picked from iCloud
-  Drive or other providers are **copied** into the Documents folder and the
-  copy is opened and auto-saved.
-- **Add files** (+ in the Files area) uses the document picker for
-  markdown, images and fonts.
+| Action | Mouse / trackpad | Touch | Keyboard |
+|--------|------------------|-------|----------|
+| New project ("Untitled", opened right away) | New Project | New Project | ⌘N |
+| Open | double-click | tap | Return |
+| Select | click; ⌘-click / Shift-click to extend | Select, then tap | arrows, ⌘A |
+| Rename | double-click the name, or menu › Rename | menu › Rename | – |
+| Duplicate, Share…, Delete | right-click menu or the selection toolbar | press and hold, or ⋯ on the card | ⌘D, ⌘⌫ |
+| Import from Files / iCloud Drive | Import… | Import… | ⌘O |
+| Add a project from another app | drag `.printfold` files onto the browser | same | – |
+| Search by name | – | – | ⌘F |
+
+- **Share…** opens the system share sheet (AirDrop, Mail, Messages, Save to
+  Files …) with the `.printfold` file.
+- **Delete** asks for confirmation and removes the file (iPadOS has no
+  Trash for app documents).
+- In the editor, the project name in the header renames the file;
+  **Projects** (⌘⇧O) saves, closes the project and returns to the browser.
+- Thumbnails are the project's first page, stored inside the `.printfold`
+  file (`preview/thumbnail`), refreshed while editing and on close.
+- Projects copied into *On My iPad › PrintFold* with the Files app appear
+  in the browser; projects shared to PrintFold from other apps are moved
+  from `Documents/Inbox` into the library.
+
+## Files, images and fonts in a project
+
+| Way in | Notes |
+|--------|-------|
+| **+** in the Files panel | Document picker for Markdown (`.md`, `.markdown`, `.txt`), images and fonts (`.ttf`, `.otf`, `.woff`) |
+| Drag onto the Files panel | From Files, Photos, Safari or any app that drags files |
+| Drag an image onto a static or blank page | Added to the project and placed on that page |
+| Image tool on the canvas | System photo/file picker |
+
+Images in formats the PDF engine cannot embed (HEIC from Photos, TIFF,
+BMP, GIF) are converted to JPEG on the way in, using WebKit's decoder.
+Files that can't be used are listed in a message instead of being dropped
+silently.
+
+## Exports
+
+**Export PDF**, PNG page/spread exports, blank templates, the duplex test
+page and file downloads open the system share sheet, anchored where you
+tapped: **Save to Files**, **Print**, AirDrop, Mail and other apps.
 
 ## Touch input
 
@@ -57,17 +90,21 @@ change. If a build still fails after pulling these files, delete
 |--------|------------------|----------------|
 | Select, move, resize, rotate items | click / drag | tap / drag |
 | Marquee selection | drag on empty canvas | one-finger drag on empty canvas |
-| Zoom | toolbar buttons | toolbar buttons, two-finger pinch (also pans) |
+| Zoom | mouse wheel, trackpad pinch, ⌘/Ctrl + scroll, toolbar | two-finger pinch (also pans), toolbar |
+| Pan | trackpad two-finger scroll, Shift-drag, middle-drag | two-finger drag |
 | Context menu (arrange, copy, paste, duplicate, delete) | right-click | press and hold an item, or empty page space to paste |
 | Edit a text item | double-click | double-tap |
 | Polygon vertex: corner ↔ smooth | ⌘-click | double-tap the vertex |
 | Polygon vertex: remove | ⌥-click | press and hold the vertex |
 | Colour pickers, gradient stops, scrub labels, column resizers | drag | drag |
 
-With a hardware keyboard, the keyboard shortcuts (←/→ between spreads,
-Delete, Escape, ⌘C/⌘V) and modifier behaviours (Shift to add to the
-selection, Option-drag to duplicate) work as on the Mac. Without one,
-Copy, Paste and Duplicate are in the press-and-hold menu.
+With a hardware keyboard, the editor shortcuts (←/→ between spreads,
+Delete, Escape, ⌘C/⌘V/⌘D) and modifier behaviours (Shift to add to the
+selection, Option-drag to duplicate) work as on the Mac. The macOS menu
+bar shortcuts are handled in the web view on iPad: ⌘N new project, ⌘⇧O
+projects, ⌘⇧A add files, ⌘E export PDF, ⌘1/⌘2 editor/preview, ⌘\ files
+sidebar. Without a keyboard, Copy, Paste and Duplicate are in the
+press-and-hold menu.
 
 Implementation: `src/components/SpreadEditor/pointer.ts` normalises Konva
 mouse and touch events (`PRESS`, `MOVE`, `RELEASE`, `TAP`, `onLongPress`,
@@ -89,14 +126,17 @@ hover-only buttons visible and widens resizer handles.
 
 ## Limitations
 
-- **Opening a project in place from another app or location.** When a
-  `.printfold` outside PrintFold's folder is opened from the Files app,
-  iPadOS hands over a security-scoped URL, which Tauri's iOS runtime does
-  not currently keep access to. PrintFold then shows a message asking to
-  use **Open Project**, which imports the file. Projects inside
-  *On My iPad › PrintFold* open directly.
-- **Drag and drop** from other apps into the Files area relies on WKWebView
-  delivering HTML drag-and-drop file data; if it does not, use **+**.
+- **Opening a project in place from another location.** When a
+  `.printfold` stored outside PrintFold's folder (iCloud Drive, another
+  app's folder) is opened from the Files app, iPadOS hands over a
+  security-scoped URL, which Tauri's iOS runtime does not keep access to.
+  PrintFold then asks you to use **Import…** (or drag the file onto the
+  browser). Projects inside *On My iPad › PrintFold*, and files shared to
+  PrintFold via the share sheet or AirDrop, open directly.
+- **Drag and drop** from other apps relies on WKWebView delivering file
+  data to the page. The paths are covered by the end-to-end test on
+  WebKitGTK; on iPad they still need confirming on a device. **+** and
+  **Import…** always work.
 - **Google Fonts** for text items need a network connection (as on the
   Mac and in the original).
 - **System fonts**: the engine scans the system font folders, which on

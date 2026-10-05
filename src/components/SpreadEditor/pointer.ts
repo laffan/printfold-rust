@@ -130,3 +130,76 @@ export function enablePinchZoom(
     lastDist = 0;
   });
 }
+
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 3;
+
+/** Zoom to `next`, keeping the stage point under `at` (container coords) fixed. */
+function zoomAt(stage: Konva.Stage, getZoom: () => number, setZoom: (z: number) => void, next: number, at: { x: number; y: number }): void {
+  const old = getZoom();
+  const pointTo = { x: (at.x - stage.x()) / old, y: (at.y - stage.y()) / old };
+  setZoom(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, next)));
+  const zoom = getZoom();
+  stage.position({ x: at.x - pointTo.x * zoom, y: at.y - pointTo.y * zoom });
+  stage.batchDraw();
+}
+
+/** A notched mouse wheel (as opposed to a trackpad's continuous scroll). */
+function isMouseWheel(e: WheelEvent): boolean {
+  if (e.deltaMode !== 0) return true;
+  return e.deltaX === 0 && Math.abs(e.deltaY) >= 40 && Number.isInteger(e.deltaY);
+}
+
+/**
+ * Wheel and trackpad navigation: a mouse wheel zooms in steps (as in the
+ * original app); trackpad two-finger scrolling pans; pinching (WebKit
+ * gesture events on macOS and iPadOS trackpads, or ⌘/Ctrl + wheel) zooms
+ * smoothly around the pointer.
+ */
+export function enableWheelNavigation(
+  stage: Konva.Stage,
+  getZoom: () => number,
+  setZoom: (zoom: number) => void,
+): void {
+  const container = stage.container();
+  const local = (clientX: number, clientY: number) => {
+    const r = container.getBoundingClientRect();
+    return { x: clientX - r.left, y: clientY - r.top };
+  };
+
+  container.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const at = local(e.clientX, e.clientY);
+    if (e.ctrlKey || e.metaKey) {
+      zoomAt(stage, getZoom, setZoom, getZoom() * Math.exp(-e.deltaY * 0.01), at);
+    } else if (isMouseWheel(e)) {
+      const step = 1.1;
+      zoomAt(stage, getZoom, setZoom, e.deltaY > 0 ? getZoom() / step : getZoom() * step, at);
+    } else {
+      stage.position({ x: stage.x() - e.deltaX, y: stage.y() - e.deltaY });
+      stage.batchDraw();
+    }
+  }, { passive: false });
+
+  // WebKit trackpad pinch: GestureEvent with a cumulative `scale`. iPadOS
+  // also fires these for touch pinches, which enablePinchZoom handles, so
+  // they are ignored while fingers are on the screen.
+  type GestureEvent = UIEvent & { scale: number; clientX: number; clientY: number };
+  let touches = 0;
+  const trackTouches = (e: TouchEvent) => { touches = e.touches.length; };
+  for (const type of ['touchstart', 'touchend', 'touchcancel'] as const) {
+    container.addEventListener(type, trackTouches, { passive: true });
+  }
+  let startZoom = 1;
+  container.addEventListener('gesturestart', (e) => {
+    e.preventDefault();
+    startZoom = getZoom();
+  });
+  container.addEventListener('gesturechange', (e) => {
+    e.preventDefault();
+    if (touches > 0) return;
+    const g = e as GestureEvent;
+    zoomAt(stage, getZoom, setZoom, startZoom * g.scale, local(g.clientX, g.clientY));
+  });
+  container.addEventListener('gestureend', (e) => e.preventDefault());
+}
