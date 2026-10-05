@@ -1,0 +1,4 @@
+[env]
+# iPadOS + Xcode 27: export swift-rs's runtime shim symbols from libTauri.a
+# (used by the patched swift-rs in Cargo.toml; ignored by other builds).
+SWIFT_RS_RUNTIME_ARCHIVE = "Tauri"

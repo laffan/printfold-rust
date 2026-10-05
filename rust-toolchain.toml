@@ -1,0 +1,6 @@
+[toolchain]
+channel = "stable"
+# llvm-tools provides llvm-objcopy, which swift-rs needs on Xcode 27 to make
+# the Swift plugin entry points (init_plugin_*, register_plugin, …) linkable
+# for iPadOS builds.
+components = ["llvm-tools", "clippy", "rustfmt"]

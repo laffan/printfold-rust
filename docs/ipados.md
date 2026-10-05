@@ -16,6 +16,25 @@ npm run ios:build       # .ipa (set your development team in Xcode / tauri.conf.
 `src-tauri/Info.ios.plist` is merged into the generated `Info.plist`. The
 minimum system version is iPadOS 15 (`tauri.conf.json`).
 
+### Xcode 27
+
+Xcode 27's SwiftPM internalizes the `@_cdecl` symbols that Tauri's Swift
+code exports to Rust, so release builds fail to link with
+`Undefined symbols … _init_plugin_dialog, _log_stdout, _retain_object …`.
+The repository carries the workaround:
+
+- `rust-toolchain.toml` installs rustup's `llvm-tools` component; swift-rs
+  uses its `llvm-objcopy` to make those symbols global again (without it,
+  the build prints `swift-rs: llvm-objcopy not found`).
+- `Cargo.toml` patches swift-rs to
+  [PR #80](https://github.com/Brendonovich/swift-rs/pull/80), and
+  `.cargo/config.toml` sets `SWIFT_RS_RUNTIME_ARCHIVE = "Tauri"` so the
+  swift-rs runtime shim is exported once, from `libTauri.a`.
+
+Remove the patch and the variable once a swift-rs release contains the
+change. If a build still fails after pulling these files, delete
+`target/aarch64-apple-ios` so the Swift packages are rebuilt.
+
 ## Where files live
 
 | What | Location |

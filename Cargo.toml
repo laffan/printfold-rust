@@ -21,3 +21,11 @@ codegen-units = 1
 lto = true
 opt-level = 3
 strip = true
+
+# iPadOS + Xcode 27: SwiftPM now internalizes @_cdecl exports, so the Swift
+# runtime shim symbols (retain_object, release_object, string_from_bytes,
+# data_from_bytes) fail to link. swift-rs PR #80 exports them from libTauri.a
+# (see SWIFT_RS_RUNTIME_ARCHIVE in .cargo/config.toml). Remove once a
+# swift-rs release includes it: https://github.com/Brendonovich/swift-rs/pull/80
+[patch.crates-io]
+swift-rs = { git = "https://github.com/Brendonovich/swift-rs", rev = "aaf38d45ab3a4b10a5af3a3dbc64424e998fae8c" }
