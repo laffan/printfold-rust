@@ -5,6 +5,9 @@
 //! imposition, the `.printfold` project format and PDF generation. The Tauri
 //! app (`src-tauri`) exposes it to the webview UI through commands.
 
+// Drawing and layout helpers take position, size and style explicitly.
+#![allow(clippy::too_many_arguments)]
+
 pub mod flow;
 pub mod fonts;
 pub mod markdown;

@@ -3,7 +3,8 @@
 
 Drives the Tauri binary through tauri-driver + WebKitWebDriver: creates a
 project, adds markdown and an image, waits for the Rust reflow, edits
-options, previews and exports the PDF, then reopens the auto-saved project.
+options, adds static-page items (and pastes one from the context menu),
+previews and exports the PDF, then reopens the auto-saved project.
 
 Native dialogs are bypassed with the PRINTFOLD_E2E_DIR / PRINTFOLD_E2E_PICK
 hooks (see src-tauri/src/platform.rs). Screenshots go to target/e2e/.
@@ -17,6 +18,7 @@ import os
 import shutil
 import subprocess
 import sys
+import json
 import tempfile
 import time
 import zipfile
@@ -172,6 +174,36 @@ def main():
         time.sleep(2.5)
         run.shot("04b-static-page")
 
+        # Copy an item, then paste it from the context menu on empty page
+        # space (the only paste route on an iPad without a keyboard).
+        # WebKitWebDriver's context click does not raise a DOM contextmenu
+        # event, so that event is dispatched directly.
+        def stage_rect(predicate_js):
+            return run.js("""
+                const stage = Konva.stages[0];
+                const node = stage.find(""" + predicate_js + """)[0];
+                const r = node.getClientRect();
+                return [r.x, r.y, r.width, r.height, stage.width(), stage.height()];
+            """)
+        x, y, rw, rh, w, h = stage_rect("n => n.getAttr('itemId') && n.getClassName() === 'Rect'")
+        ActionChains(run.driver).move_to_element_with_offset(container, int(x + rw / 2 - w / 2), int(y + rh / 2 - h / 2)).click().perform()
+        time.sleep(0.5)
+        run.js("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'c', ctrlKey: true, metaKey: true}))")
+        x, y, rw, rh, w, h = stage_rect("n => n.getAttr('clickPagePosition') === 'recto'")
+        run.js("""
+            const content = document.querySelector('#konva-container .konvajs-content');
+            const r = content.getBoundingClientRect();
+            content.dispatchEvent(new MouseEvent('contextmenu', {
+                clientX: r.left + arguments[0], clientY: r.top + arguments[1], button: 2, bubbles: true, cancelable: true }));
+        """, x + rw - 12, y + rh - 12)
+        run.wait(lambda: run.js("return [...document.querySelectorAll('.context-menu div')].some(d => d.textContent === 'Paste')"),
+                 what="paste menu")
+        run.js("[...document.querySelectorAll('.context-menu div')].find(d => d.textContent === 'Paste').click()")
+        time.sleep(1)
+        # Back to page selection (empty page space) for the page export below.
+        ActionChains(run.driver).move_to_element_with_offset(container, int(x + rw - 12 - w / 2), int(y + rh - 12 - h / 2)).click().perform()
+        time.sleep(0.5)
+
         # PNG export of the static page from the Selected tab
         run.js("document.querySelector('.options-tabs .tab-btn[data-tab=\"selected\"]').click()")
         time.sleep(0.5)
@@ -209,6 +241,10 @@ def main():
         assert "project.json" in names and any(n.startswith("text/") for n in names), names
         assert any(n.startswith("images/") for n in names), names
         log(f"autosaved archive: {sorted(names)}")
+        with zipfile.ZipFile(project) as z:
+            item_count = sum(len(json.loads(z.read(n)).get("items", [])) for n in names if n.startswith("static/") and n.endswith(".json"))
+        log(f"items on static pages: {item_count}")
+        assert item_count >= 4, "expected rectangle, text, text-flow region and the pasted copy"
 
         # Reopen from the welcome screen's recents
         run.click("#btn-welcome")

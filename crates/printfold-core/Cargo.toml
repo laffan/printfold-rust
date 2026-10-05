@@ -18,6 +18,7 @@ pulldown-cmark = { version = "0.13", default-features = false }
 rustybuzz = "0.20"
 fontdb = { version = "0.24", default-features = false, features = ["std", "fs"] }
 zip = { version = "8", default-features = false, features = ["deflate"] }
+miniz_oxide = "0.8"
 krilla = { version = "0.8", default-features = false, features = ["raster-images", "simple-text"] }
 # Same decoders krilla uses, to validate images before embedding (krilla
 # decodes lazily, so one corrupt image would otherwise fail the whole PDF).

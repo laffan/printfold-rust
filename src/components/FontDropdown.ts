@@ -2,7 +2,7 @@
  * Custom Font Dropdown Component
  *
  * Supports two modes:
- * - 'styles': For markdown styles (body, headings, etc.) - uses web-safe fonts (web) or system fonts (Electron)
+ * - 'styles': For markdown styles (body, headings, etc.) - uses the installed system fonts (web-safe list until they load)
  * - 'items': For static page items - uses Google Fonts + web-safe fonts (rendered to images)
  *
  * Features:
@@ -96,7 +96,7 @@ export class FontDropdown {
     this.container.appendChild(this.button);
     this.container.appendChild(this.dropdown);
 
-    // Create warning container for missing variant messages (Electron styles mode only)
+    // Create warning container for missing variant messages (styles mode only)
     if (this.mode === 'styles') {
       this.warningContainer = document.createElement('div');
       this.warningContainer.className = 'font-dropdown-warning';
@@ -144,7 +144,7 @@ export class FontDropdown {
       });
     }
 
-    // Listen for system fonts to load (Electron only)
+    // Listen for the system font list to load
     if (this.mode === 'styles') {
       this.unsubscribeSystemFonts = fontService.onSystemFontsLoaded(() => {
         this.buildDropdownContent();
@@ -163,7 +163,7 @@ export class FontDropdown {
   }
 
   private shouldShowSearch(): boolean {
-    // Show search for system fonts in Electron or for items mode
+    // Search is always available (long system font lists)
     return true;
   }
 
@@ -250,7 +250,7 @@ export class FontDropdown {
     // Start async font preview loading
     this.startFontPreviewLoading();
 
-    // Start variant checking separately (for Electron styles mode)
+    // Start variant checking separately (styles mode)
     // This is separate from font preview loading because system fonts don't need preview loading
     if (this.mode === 'styles') {
       this.startVariantChecking();
@@ -269,7 +269,7 @@ export class FontDropdown {
     nameSpan.textContent = font.name;
     option.appendChild(nameSpan);
 
-    // For system fonts in Electron or web-safe fonts, try to show in font face immediately
+    // For system or web-safe fonts, try to show in font face immediately
     if (!isGoogleFont) {
       option.style.fontFamily = `"${font.family}", ${font.category}`;
     } else {
@@ -277,7 +277,7 @@ export class FontDropdown {
       this.fontPreviewQueue.set(font.name, option);
     }
 
-    // For system fonts in Electron, add variant indicators
+    // For system fonts, add variant indicators
     if (this.mode === 'styles' && !isGoogleFont) {
       const indicatorContainer = document.createElement('span');
       indicatorContainer.className = 'font-variant-indicators';
@@ -597,7 +597,7 @@ export function createFontDropdown(
 }
 
 /**
- * Create a styles font dropdown (web-safe for web, system fonts for Electron)
+ * Create a styles font dropdown (installed system fonts)
  */
 export function createStylesFontDropdown(
   selectId: string,

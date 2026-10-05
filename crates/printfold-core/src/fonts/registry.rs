@@ -208,6 +208,14 @@ impl FontRegistry {
 
     /// Register an uploaded font under `family` (replacing any previous one).
     pub fn register_custom_font(&mut self, family: &str, bytes: Vec<u8>) -> bool {
+        let bytes = if super::woff::is_woff(&bytes) {
+            match super::woff::woff_to_sfnt(&bytes) {
+                Some(sfnt) => sfnt,
+                None => return false,
+            }
+        } else {
+            bytes
+        };
         if rustybuzz::Face::from_slice(&bytes, 0).is_none() {
             return false;
         }

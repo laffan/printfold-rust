@@ -13,7 +13,7 @@ import { renderThumbnails } from './thumbnails';
 import { drawMarginGuides, getMarginsForPage } from './margins';
 import { drawPageContent, getFontStyleForSection } from './content';
 import { switchToSelectedTab } from '../OptionsPanel/editPage';
-import { createSelectionMarquee, showContextMenu, createItemContextMenu, hideContextMenu } from './selection';
+import { createSelectionMarquee, showContextMenu, createItemContextMenu, createPasteMenuItems, hideContextMenu } from './selection';
 import { PRESS, MOVE, RELEASE, TAP, isPrimaryPress, modifier, isTouch, onLongPress, enablePinchZoom } from './pointer';
 
 // Type for visual spreads (reading order pairs)
@@ -291,6 +291,24 @@ export class SpreadEditor {
     e.preventDefault();
     const menuItems = createItemContextMenu(pageNumber, itemIds);
     showContextMenu(e.clientX, e.clientY, menuItems);
+  }
+
+  /**
+   * Context menu on empty page space: selects the page under the point and
+   * offers Paste. Returns false (and shows nothing) while the clipboard is
+   * empty or the point is off the pages.
+   */
+  private showPageContextMenu(clientX: number, clientY: number): boolean {
+    const menuItems = createPasteMenuItems();
+    if (menuItems.length === 0) return false;
+    const box = this.stage.container().getBoundingClientRect();
+    const area = this.stage
+      .getAllIntersections({ x: clientX - box.left, y: clientY - box.top })
+      .find((shape) => shape.getAttr('clickPageNumber') !== undefined);
+    if (!area) return false;
+    this.selectPage(area.getAttr('clickPageNumber'), area.getAttr('clickPagePosition'));
+    showContextMenu(clientX, clientY, menuItems);
+    return true;
   }
 
   private setupStateListeners(): void {
@@ -696,6 +714,8 @@ export class SpreadEditor {
           appState.selectItem(itemId);
         }
         this.showItemContextMenu(e.evt);
+      } else {
+        this.showPageContextMenu(e.evt.clientX, e.evt.clientY);
       }
     });
 
@@ -707,7 +727,13 @@ export class SpreadEditor {
         itemId = node.getAttr?.('itemId');
         node = node.getParent?.() ?? null;
       }
-      if (!itemId) return;
+      if (!itemId) {
+        if (this.showPageContextMenu(point.x, point.y) && this.isMarqueeSelecting) {
+          this.selectionMarquee.cancelMarquee();
+          this.isMarqueeSelecting = false;
+        }
+        return;
+      }
       if (this.isMarqueeSelecting) {
         this.selectionMarquee.cancelMarquee();
         this.isMarqueeSelecting = false;
@@ -1208,6 +1234,8 @@ export class SpreadEditor {
         height: pageDimensions.height,
         fill: 'transparent',
         listening: true,
+        clickPageNumber: spread.verso.pageNumber,
+        clickPagePosition: 'verso',
       });
       versoArea.on(TAP, () => {
         this.selectPage(spread.verso!.pageNumber, 'verso');
@@ -1224,6 +1252,8 @@ export class SpreadEditor {
         height: pageDimensions.height,
         fill: 'transparent',
         listening: true,
+        clickPageNumber: spread.recto.pageNumber,
+        clickPagePosition: 'recto',
       });
       rectoArea.on(TAP, () => {
         this.selectPage(spread.recto!.pageNumber, 'recto');

@@ -344,8 +344,7 @@ pub struct HeaderFooterSection {
 
 impl Default for HeaderFooterSection {
     fn default() -> Self {
-        let mut font = FontStyle::default();
-        font.font_size = 10.0;
+        let font = FontStyle { font_size: 10.0, ..FontStyle::default() };
         Self {
             enabled: false,
             height: 24.0,

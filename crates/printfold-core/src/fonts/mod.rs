@@ -2,6 +2,7 @@
 
 pub mod registry;
 pub mod shaping;
+pub mod woff;
 
 pub use registry::{FaceRef, FamilyVariants, FontBytes, FontRegistry, LoadedFace, ResolvedFont};
 pub use shaping::{FontRequest, ShapedGlyph, ShapedRun, ShapedText, WidthCache};

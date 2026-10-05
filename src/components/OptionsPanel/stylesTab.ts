@@ -910,7 +910,7 @@ function setupFontDropdowns(): void {
   const fontOptions = appState.getProject().fontOptions;
   const headerFooter = appState.getProject().headerFooter;
 
-  // Body - uses styles mode (web-safe for web, system fonts for Electron)
+  // Body - uses styles mode (installed system fonts)
   const bodyDropdown = createStylesFontDropdown('dyn-body-font', (value) => {
     const fonts = appState.getProject().fontOptions;
     appState.updateFontOptions({ body: { ...fonts.body, fontFamily: value } });

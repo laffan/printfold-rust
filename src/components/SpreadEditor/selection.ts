@@ -6,6 +6,7 @@
 import Konva from 'konva';
 import { appState } from '../../services/state';
 import type { PageItem } from '../../types';
+import { switchToSelectedTab } from '../OptionsPanel/editPage';
 
 interface SelectionMarquee {
   rect: Konva.Rect;
@@ -377,6 +378,7 @@ export function createItemContextMenu(
     label: 'Copy',
     action: () => appState.copyToClipboard(),
   });
+  items.push(...createPasteMenuItems());
   items.push({
     label: 'Duplicate',
     action: () => appState.duplicateSelectedItems(),
@@ -388,4 +390,18 @@ export function createItemContextMenu(
   });
 
   return items;
+}
+
+/**
+ * "Paste" entry when the clipboard holds items (pastes onto the selected
+ * page). Menus are the only way to paste without a hardware keyboard.
+ */
+export function createPasteMenuItems(): ContextMenuItem[] {
+  if (appState.getEditor().clipboard.length === 0) return [];
+  return [{
+    label: 'Paste',
+    action: () => {
+      if (appState.pasteFromClipboard().length > 0) switchToSelectedTab();
+    },
+  }];
 }

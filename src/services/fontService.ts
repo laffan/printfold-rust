@@ -16,7 +16,7 @@ export interface FontDefinition {
   family: string; // CSS font-family value
   category: 'serif' | 'sans-serif' | 'monospace' | 'display';
   weights?: number[];
-  loaded?: boolean; // For async font loading in Electron
+  loaded?: boolean; // For async font loading
 }
 
 // Web-safe fonts that work reliably in PDFs across all platforms
@@ -121,7 +121,7 @@ class FontService {
   private loadingGoogleFonts = new Map<string, Promise<void>>();
   private fontLoadCallbacks = new Set<() => void>();
 
-  // System fonts (for Electron)
+  // System fonts (listed by the Rust font registry)
   private systemFonts: FontDefinition[] = [];
   private systemFontsLoaded = false;
   private systemFontsLoading = false;
@@ -134,9 +134,8 @@ class FontService {
   private variantCache = new Map<string, Promise<FamilyVariants>>();
 
   // User-uploaded custom fonts. Keyed by font family name (the filename
-  // without extension). The bytes are kept so we can embed the font in
-  // exported PDFs even outside Electron — pdf-lib + fontkit can consume
-  // raw TTF/OTF/WOFF/WOFF2 buffers.
+  // without extension). The bytes are kept to rebuild the @font-face rules;
+  // the Rust engine gets its own copy for layout and PDF embedding.
   private customFonts = new Map<string, FontDefinition>();
   private customFontBytes = new Map<string, Uint8Array>();
   private customFontExt = new Map<string, 'ttf' | 'otf' | 'woff'>();
@@ -145,10 +144,10 @@ class FontService {
 
   /**
    * Get fonts for markdown styles (body, headings, etc.)
-   * Uses web-safe fonts for web, system fonts for Electron
+   * Installed system fonts once listed; web-safe fonts until then
    */
   getStyleFonts(): FontDefinition[] {
-    // In Electron, use system fonts if they loaded successfully with actual fonts
+    // Use system fonts once they loaded with actual fonts
     // Fall back to web-safe fonts if system fonts are empty (e.g., shell commands failed in packaged app)
     if (this.systemFontsLoaded && this.systemFonts.length > 0) {
       return this.systemFonts;
@@ -183,8 +182,8 @@ class FontService {
   /**
    * Register a custom font from base64-encoded file content (TTF/OTF/WOFF).
    * The font is installed via @font-face for immediate use in the editor
-   * and canvas, and kept as raw bytes so it can be embedded into exported
-   * PDFs by the pdf-lib + fontkit pipeline.
+   * and canvas, and registered with the Rust engine, which measures text
+   * and embeds the font in exported PDFs from the same bytes.
    *
    * Returns the family name actually used (filename without extension).
    */
@@ -309,7 +308,7 @@ class FontService {
   }
 
   /**
-   * Check if system fonts are available (Electron only)
+   * Check if the system font list has loaded
    * Returns true only if fonts were actually loaded (not empty)
    */
   hasSystemFonts(): boolean {
@@ -317,7 +316,7 @@ class FontService {
   }
 
   /**
-   * Load system fonts from Electron (async)
+   * Load the system font list from the native font registry (async)
    */
   async loadSystemFonts(): Promise<void> {
     if (this.systemFontsLoaded || this.systemFontsLoading) {

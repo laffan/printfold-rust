@@ -12,7 +12,7 @@ import { bindNumberInput, bindColorInput, bindCheckbox, type DebounceCallback } 
  * Initialize custom font dropdowns - uses 'styles' mode for web-safe/system fonts
  */
 export function initFontDropdowns(fontDropdowns: Map<string, FontDropdown>): void {
-  // Body font dropdown - uses styles mode (web-safe for web, system fonts for Electron)
+  // Body font dropdown - uses styles mode (installed system fonts)
   const bodyDropdown = createStylesFontDropdown('opt-font-body', (value) => {
     const fonts = appState.getProject().fontOptions;
     appState.updateFontOptions({
