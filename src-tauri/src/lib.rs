@@ -78,6 +78,7 @@ pub fn run() {
             commands::files::file_rename,
             commands::files::files_retain,
             commands::files::pick_files,
+            commands::clipboard::clipboard_read,
             commands::files::save_file,
             commands::project::project_open_dialog,
             commands::project::project_open_path,

@@ -7,6 +7,8 @@ import { appState } from '../services/state';
 import { env } from '../services/environment';
 import { showAlert } from '../services/dialogs';
 import { importDroppedFiles, normalizePickedFiles, PICKER_EXTENSIONS, skippedMessage, type DropImport } from '../services/fileImport';
+import { readClipboard, uniqueName } from '../services/clipboardImport';
+import { showContextMenu } from './SpreadEditor/selection';
 import type { ProjectFile } from '../types';
 
 export class FileList {
@@ -59,14 +61,48 @@ export class FileList {
     });
   }
 
+  /** "+" opens a menu: Import File… / From Clipboard. */
   private setupAddButton(): void {
     const btn = document.getElementById('btn-add-files');
-    btn?.addEventListener('click', () => {
-      void this.openFileDialog();
+    btn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const r = btn.getBoundingClientRect();
+      showContextMenu(r.left, r.bottom + 4, [
+        { label: 'Import File…', action: () => void this.openFileDialog() },
+        { label: 'From Clipboard', action: () => void this.addFromClipboard() },
+      ]);
     });
   }
 
-  private async openFileDialog(): Promise<void> {
+  /** Call straight from a click or key press (iPadOS paste permission). */
+  async addFromClipboard(): Promise<void> {
+    let result;
+    try {
+      result = await readClipboard();
+    } catch (e) {
+      console.warn('Clipboard read failed:', e);
+      await showAlert('PrintFold could not read the clipboard.');
+      return;
+    }
+    if (result.empty) {
+      await showAlert('The clipboard has no text, image or files PrintFold can use.');
+      return;
+    }
+    const taken = appState.getProject().files.map(f => f.name);
+    for (const file of result.files) {
+      file.name = uniqueName(file.name, taken);
+      taken.push(file.name);
+    }
+    this.addImported(result);
+    const first = result.files[0];
+    if (first) {
+      this.activeTab = first.type === 'image' ? 'images' : first.type === 'font' ? 'fonts' : 'text';
+      this.render();
+      this.onFileSelect?.(appState.getProject().files.find(f => f.id === first.id) ?? null);
+    }
+  }
+
+  async openFileDialog(): Promise<void> {
     const files = await env.openFiles({
       filters: [{ name: 'Supported Files', extensions: PICKER_EXTENSIONS }],
       multiple: true,

@@ -62,6 +62,7 @@ UI calls `invoke`. Errors are returned as strings and shown by the UI.
 | `clear_measurement_cache` | – | – | After font changes |
 | `file_put` / `file_rename` / `files_retain` | id, name, type, base64 / ids | – | Keeps the native file store in sync |
 | `pick_files` | filters, multiple | `[{ name, type, content, isBase64 }]` | Open panel / document picker |
+| `clipboard_read` | – | `{ kind: files \| image \| text \| empty \| unsupported }` | Desktop via arboard: copied files first, then text (unless it is only a link), then image (as PNG). iPadOS returns `unsupported`; the UI uses WebKit's clipboard API there |
 | `save_file` | **binary body**; headers `x-file-name`, `x-filter-name`, `x-filter-ext`, optional `x-anchor` | saved? | macOS save panel; iPadOS share sheet (Save to Files, AirDrop, Print …) for a temporary copy |
 | `project_open_dialog` | – | opened project or null | macOS: open panel, project stays where it is |
 | `project_open_path` | path | opened project | Browser, file associations; decodes the archive in Rust, fills the file store, loads the thumbnail |
@@ -107,7 +108,7 @@ metadata in headers (percent-encoded so non-ASCII names survive).
 | Menu | Items (id) |
 |------|-----------|
 | PrintFold | About, Services, Hide, Hide Others, Show All, Quit (system items) |
-| File | New Project… ⌘N (`new-project`), Open Project… ⌘O (`open-project`), Projects… ⌘⇧O (`projects`), Add Files… ⌘⇧A (`add-files`), Export PDF… ⌘E (`export-pdf`), Close Window |
+| File | New Project… ⌘N (`new-project`), Open Project… ⌘O (`open-project`), Projects… ⌘⇧O (`projects`), Add Files… ⌘⇧A (`add-files`), New File from Clipboard ⌘⇧V (`paste-file`), Export PDF… ⌘E (`export-pdf`), Close Window |
 | Edit | Undo, Redo, Cut, Copy, Paste, Select All (system items) |
 | View | Toggle Files Sidebar ⌘\ (`toggle-sidebar`), Editor ⌘1 (`show-editor`), Preview ⌘2 (`show-preview`), Full Screen |
 | Window | Minimize, Zoom |

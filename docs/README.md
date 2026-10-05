@@ -109,7 +109,8 @@ src/                       UI (TypeScript)
                            FillPicker/, PDFPreview
   services/                bridge, environment, projectIO, pdfExport,
                            pageRenderer, pageExport, pageGeometry, fontService,
-                           fileImport, projectFile, dialogs, state/, text/
+                           fileImport, clipboardImport, projectFile, dialogs,
+                           state/, text/
   styles/modules/          CSS (platform.css: macOS title bar, iPad touch)
 e2e/                       WebDriver end-to-end test (Linux/WebKitGTK)
 tools/parity/              parser parity check against the original app
@@ -204,7 +205,10 @@ app open unchanged and files written by the port open in the original
 | **Fonts** | `.ttf`, `.otf`, `.woff` | Registered with WebKit and the Rust engine; listed first in every font menu |
 
 Files can be dropped onto the panel (from Finder, Files, Photos …) or
-added with **+**; images can also be dropped straight onto a static or
+added with the **+** menu: **Import File…** or **From Clipboard** (text
+becomes a markdown file named after its first line, an image a PNG,
+copied files are imported as they are; also File › New File from
+Clipboard, ⌘⇧V). Images can also be dropped straight onto a static or
 blank page. Rows have edit and remove actions (always visible on touch
 screens). The preview pane edits
 markdown (CodeMirror) and previews images and fonts.

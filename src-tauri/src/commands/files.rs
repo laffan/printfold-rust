@@ -48,6 +48,25 @@ pub fn files_retain(state: State<'_, AppState>, ids: Vec<String>) {
     state.files.lock().unwrap().retain(&ids);
 }
 
+/// Read a file as a project file: markdown as text, everything else base64.
+pub(crate) fn read_picked(path: &std::path::Path) -> CmdResult<PickedFile> {
+    let bytes = std::fs::read(path).map_err(err)?;
+    let name = platform::file_name(path);
+    let ext = name.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_default();
+    let is_text = matches!(ext.as_str(), "md" | "markdown" | "txt");
+    let file_type = if is_text { "markdown".to_string() } else { file_type_for_extension(&ext).to_string() };
+    Ok(PickedFile {
+        name,
+        file_type,
+        content: if is_text {
+            String::from_utf8_lossy(&bytes).into_owned()
+        } else {
+            base64::engine::general_purpose::STANDARD.encode(&bytes)
+        },
+        is_base64: !is_text,
+    })
+}
+
 pub(crate) fn into_path(fp: FilePath) -> CmdResult<PathBuf> {
     fp.into_path().map_err(err)
 }
@@ -70,21 +89,7 @@ pub async fn pick_files(app: AppHandle, filters: Vec<Filter>, multiple: bool) ->
     };
     let mut out = Vec::new();
     for path in picked {
-        let bytes = std::fs::read(&path).map_err(err)?;
-        let name = platform::file_name(&path);
-        let ext = name.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_default();
-        let is_text = matches!(ext.as_str(), "md" | "markdown" | "txt");
-        let file_type = if is_text { "markdown".to_string() } else { file_type_for_extension(&ext).to_string() };
-        out.push(PickedFile {
-            name,
-            file_type,
-            content: if is_text {
-                String::from_utf8_lossy(&bytes).into_owned()
-            } else {
-                base64::engine::general_purpose::STANDARD.encode(&bytes)
-            },
-            is_base64: !is_text,
-        });
+        out.push(read_picked(&path)?);
     }
     Ok(out)
 }

@@ -28,6 +28,14 @@ export interface PickedFile {
   isBase64: boolean;
 }
 
+/** What `clipboard_read` found (desktop; iPadOS reports `unsupported`). */
+export type ClipboardContent =
+  | { kind: 'files'; files: PickedFile[] }
+  | { kind: 'image'; png: string }
+  | { kind: 'text'; text: string }
+  | { kind: 'empty' }
+  | { kind: 'unsupported' };
+
 export interface FamilyVariants {
   regular: boolean;
   bold: boolean;
@@ -207,6 +215,10 @@ export const bridge = {
 
   pickFiles(filters: FileFilter[], multiple: boolean): Promise<PickedFile[]> {
     return invoke<PickedFile[]>('pick_files', { filters, multiple });
+  },
+
+  clipboardRead(): Promise<ClipboardContent> {
+    return invoke<ClipboardContent>('clipboard_read');
   },
 
   /**

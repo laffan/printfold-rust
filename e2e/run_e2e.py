@@ -81,6 +81,12 @@ class Run:
     def click(self, selector):
         self.driver.find_element(By.CSS_SELECTOR, selector).click()
 
+    def menu(self, label):
+        """Click an entry of the open context/dropdown menu."""
+        self.wait(lambda: self.js("return [...document.querySelectorAll('.context-menu div')].some(d => d.textContent === arguments[0])", label),
+                  what=f"menu item {label}")
+        self.js("[...document.querySelectorAll('.context-menu div')].find(d => d.textContent === arguments[0]).click()", label)
+
     def visible(self, selector):
         return self.js(
             "const e=document.querySelector(arguments[0]);"
@@ -128,6 +134,7 @@ def main():
 
         # Add markdown + image via the Files "+" button (picker hook)
         run.click("#btn-add-files")
+        run.menu("Import File…")
         run.wait(lambda: run.js("return document.querySelectorAll('.file-item').length") >= 1,
                  what="file list")
 
@@ -144,6 +151,23 @@ def main():
         run.wait(lambda: run.js("return [...document.querySelectorAll('.file-item')].some(e => e.textContent.includes('notes.md'))"),
                  what="dropped text file")
         log("dropped notes.txt → notes.md")
+
+        # + › From Clipboard: text becomes a markdown file named after its
+        # first line; a PNG becomes an image file.
+        def set_clipboard(data, mime):
+            subprocess.run(["xclip", "-selection", "clipboard", "-t", mime, "-i"], input=data, check=True)
+        set_clipboard(b"# Clipboard Chapter\n\nPasted from the clipboard.\n", "UTF8_STRING")
+        run.click("#btn-add-files")
+        run.menu("From Clipboard")
+        run.wait(lambda: run.js("return [...document.querySelectorAll('.file-item')].some(e => e.textContent.includes('Clipboard Chapter.md'))"),
+                 what="markdown file from clipboard")
+        set_clipboard((FIXTURES / "picture.png").read_bytes(), "image/png")
+        run.click("#btn-add-files")
+        run.menu("From Clipboard")
+        run.wait(lambda: run.js("return [...document.querySelectorAll('.file-item')].some(e => e.textContent.includes('Clipboard image.png'))"),
+                 what="image file from clipboard")
+        run.js("[...document.querySelectorAll('.file-tab')].find(t => t.textContent.startsWith('Text')).click()")
+        log("from clipboard: Clipboard Chapter.md, Clipboard image.png")
 
         # Wait for reflow: more than the default 4 pages laid out with text
         run.wait(lambda: int(run.text("#info-pages") or 0) >= 8, timeout=60, what="reflow")

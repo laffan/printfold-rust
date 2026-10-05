@@ -31,6 +31,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             &MenuItem::with_id(app, "projects", "Projects…", true, Some("CmdOrCtrl+Shift+O"))?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "add-files", "Add Files…", true, Some("CmdOrCtrl+Shift+A"))?,
+            &MenuItem::with_id(app, "paste-file", "New File from Clipboard", true, Some("CmdOrCtrl+Shift+V"))?,
             &MenuItem::with_id(app, "export-pdf", "Export PDF…", true, Some("CmdOrCtrl+E"))?,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::close_window(app, None)?,

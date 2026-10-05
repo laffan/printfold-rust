@@ -33,7 +33,7 @@ difference (see notes).
 | Feature | Port | Notes |
 |---------|------|-------|
 | Text / Images / Fonts tabs, accepted types | + | `.md` (+ `.markdown`, `.txt`); `.png .jpg .jpeg .webp` (+ HEIC/TIFF/BMP/GIF converted to JPEG); `.ttf .otf .woff` |
-| Drag files in, `+ Files` button | + | Native open panel / document picker; unusable files are reported instead of skipped silently; images can be dropped straight onto a page |
+| Drag files in, `+ Files` button | + | `+` is a menu: Import File… / From Clipboard (new); native open panel / document picker; unusable files are reported instead of skipped silently; images can be dropped straight onto a page |
 | Reorder markdown files by dragging | = | Pointer events (works with touch) |
 | Edit / remove icons on hover | = | Always visible on touch screens |
 | Preview pane: CodeMirror markdown editor, image preview, font sample | = | |

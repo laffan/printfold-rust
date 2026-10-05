@@ -68,7 +68,8 @@ the Files app as **On My iPad › PrintFold**.
 
 | Way in | Notes |
 |--------|-------|
-| **+** in the Files panel | Document picker for Markdown (`.md`, `.markdown`, `.txt`), images and fonts (`.ttf`, `.otf`, `.woff`) |
+| **+** › Import File… | Document picker for Markdown (`.md`, `.markdown`, `.txt`), images and fonts (`.ttf`, `.otf`, `.woff`) |
+| **+** › From Clipboard (⌘⇧V) | Text becomes a markdown file, an image a PNG; iPadOS asks for permission to paste |
 | Drag onto the Files panel | From Files, Photos, Safari or any app that drags files |
 | Drag an image onto a static or blank page | Added to the project and placed on that page |
 | Image tool on the canvas | System photo/file picker |
@@ -102,7 +103,7 @@ With a hardware keyboard, the editor shortcuts (←/→ between spreads,
 Delete, Escape, ⌘C/⌘V/⌘D) and modifier behaviours (Shift to add to the
 selection, Option-drag to duplicate) work as on the Mac. The macOS menu
 bar shortcuts are handled in the web view on iPad: ⌘N new project, ⌘⇧O
-projects, ⌘⇧A add files, ⌘E export PDF, ⌘1/⌘2 editor/preview, ⌘\ files
+projects, ⌘⇧A add files, ⌘⇧V new file from clipboard, ⌘E export PDF, ⌘1/⌘2 editor/preview, ⌘\ files
 sidebar. Without a keyboard, Copy, Paste and Duplicate are in the
 press-and-hold menu.
 

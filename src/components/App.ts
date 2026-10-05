@@ -152,7 +152,8 @@ export class App {
           case 'new-project': void this.guard(() => this.createProject()); break;
           case 'open-project': void this.guard(() => this.openProjectElsewhere()); break;
           case 'projects': if (inEditor) void this.showProjects(); break;
-          case 'add-files': if (inEditor) click('#btn-add-files'); break;
+          case 'add-files': if (inEditor) void this.fileList.openFileDialog(); break;
+          case 'paste-file': if (inEditor) void this.fileList.addFromClipboard(); break;
           case 'export-pdf': if (inEditor) click('#btn-export'); break;
           case 'toggle-sidebar': click('#btn-toggle-sidebar'); break;
           case 'show-editor': click('.column-header .tab[data-tab="editor"]'); break;
@@ -187,7 +188,10 @@ export class App {
         click('#btn-export');
       } else if (key === 'a' && e.shiftKey) {
         e.preventDefault();
-        click('#btn-add-files');
+        void this.fileList.openFileDialog();
+      } else if (key === 'v' && e.shiftKey) {
+        e.preventDefault();
+        void this.fileList.addFromClipboard();
       } else if (key === '1' || key === '2') {
         e.preventDefault();
         click(`.column-header .tab[data-tab="${key === '1' ? 'editor' : 'preview'}"]`);

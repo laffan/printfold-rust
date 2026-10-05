@@ -1,5 +1,6 @@
 //! Tauri commands exposed to the webview (see `src/services/bridge.ts`).
 
+pub mod clipboard;
 pub mod files;
 pub mod fonts;
 pub mod layout;
