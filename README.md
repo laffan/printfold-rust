@@ -12,8 +12,7 @@ and reads and writes the same project files. It is also built for iPadOS; see
 ## Installation
 
 Download the installer for your system from the
-[Releases](../../releases) page: `.dmg` (macOS), `.msi` or `.exe` (Windows),
-`.AppImage` or `.deb` (Linux).
+[Releases](../../releases) page: `.dmg` (macOS).
 
 The builds are not code-signed. On macOS, if the app is blocked on first
 launch, move it to Applications and run:
@@ -21,8 +20,6 @@ launch, move it to Applications and run:
 ```sh
 xattr -cr "/Applications/PrintFold.app"
 ```
-
-On Windows, choose "More info" then "Run anyway" when SmartScreen warns.
 
 ### Build from source
 
